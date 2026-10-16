@@ -2,64 +2,173 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e1116">
   <title>DevAssist</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b82f6'/%3E%3Cpath d='M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z' fill='white'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <!-- Lobby -->
-  <section id="lobby">
-    <h1>DevAssist</h1>
-    <p class="muted">Calls, screen sharing and remote control for technical help.</p>
-    <input id="nameInput" placeholder="Your name" maxlength="40">
-    <input id="roomInput" placeholder="Room code (leave empty for a new one)" maxlength="64">
-    <button id="joinBtn" class="primary">Join</button>
+  <!-- SVG icon sprite -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></symbol>
+      <symbol id="i-cam" viewBox="0 0 24 24"><path d="m16 13 5.2 3.5a.5.5 0 0 0 .8-.4V7.9a.5.5 0 0 0-.8-.4L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></symbol>
+      <symbol id="i-share" viewBox="0 0 24 24"><path d="m9 10 3-3 3 3"/><path d="M12 13V7"/><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M12 17v4"/><path d="M8 21h8"/></symbol>
+      <symbol id="i-pointer" viewBox="0 0 24 24"><path d="M12.6 12.6 19 19"/><path d="M3.7 3a.5.5 0 0 0-.7.7l6.5 16a.5.5 0 0 0 1-.1l1.5-6a2 2 0 0 1 1.5-1.5l6.1-1.6a.5.5 0 0 0 .1-1z"/></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></symbol>
+      <symbol id="i-leave" viewBox="0 0 24 24"><path d="M10.1 13.9a14 14 0 0 0 3.7 2.7 1 1 0 0 0 1.2-.3l.4-.5A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.5.4a1 1 0 0 0-.3 1.2l.3.5"/><path d="m2 2 20 20"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+      <symbol id="i-keyboard" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></symbol>
+      <symbol id="i-send" viewBox="0 0 24 24"><path d="M14.5 21.7a.5.5 0 0 0 .9 0l6.5-19a.5.5 0 0 0-.6-.6l-19 6.5a.5.5 0 0 0 0 .9l7.9 3.2a2 2 0 0 1 1.1 1.1z"/><path d="m21.9 2.1-10.9 11"/></symbol>
+      <symbol id="i-slash" viewBox="0 0 24 24"><path d="m3 3 18 18"/></symbol>
+      <symbol id="i-logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="var(--accent)" stroke="none"/><path d="M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z" fill="#fff" stroke="none"/></symbol>
+    </defs>
+  </svg>
+
+  <!-- ===== Lobby ===== -->
+  <section id="lobby" class="lobby">
+    <div class="lobby-card">
+      <div class="preview">
+        <video id="previewVideo" autoplay playsinline muted></video>
+        <div id="previewOff" class="preview-off">Starting camera…</div>
+        <div class="preview-controls">
+          <button class="round media-mic" type="button" title="Microphone"><svg class="icon"><use href="#i-mic"/></svg><svg class="icon slash"><use href="#i-slash"/></svg></button>
+          <button class="round media-cam" type="button" title="Camera"><svg class="icon"><use href="#i-cam"/></svg><svg class="icon slash"><use href="#i-slash"/></svg></button>
+        </div>
+      </div>
+      <form id="lobbyForm" class="lobby-form">
+        <div class="brand"><svg class="logo"><use href="#i-logo"/></svg>DevAssist</div>
+        <h1 id="lobbyTitle">Start a support call</h1>
+        <p id="lobbySub" class="muted">Video, screen sharing and remote control, in your browser.</p>
+        <label class="field"><span>Your name</span>
+          <input id="nameInput" placeholder="e.g. Humberto" maxlength="40" autocomplete="name">
+        </label>
+        <label id="roomField" class="field"><span>Room code <span class="muted">(optional)</span></span>
+          <input id="roomInput" placeholder="Leave empty to start a new room" maxlength="64" autocomplete="off" autocapitalize="off">
+        </label>
+        <button id="joinBtn" class="btn primary block" type="submit">Start call</button>
+      </form>
+    </div>
   </section>
 
-  <!-- Call -->
-  <section id="call" hidden>
-    <header>
-      <span id="roomLabel"></span>
-      <button id="copyLinkBtn">Copy invite link</button>
-      <span id="status" class="muted">Waiting for the other person…</span>
+  <!-- ===== Call ===== -->
+  <section id="call" class="call" hidden>
+    <header class="topbar">
+      <svg class="logo"><use href="#i-logo"/></svg>
+      <button id="roomChip" class="chip" type="button" title="Copy invite link">
+        <span id="roomLabel"></span><svg class="icon sm"><use href="#i-copy"/></svg>
+      </button>
+      <span class="spacer"></span>
+      <span id="statusPill" class="pill" data-state="waiting"><span class="dot"></span><span id="status">Waiting</span></span>
     </header>
 
-    <main>
-      <div id="stage">
+    <main class="main">
+      <div id="stage" class="stage" data-mode="empty">
+        <div id="emptyState" class="empty">
+          <p id="emptyTitle" class="empty-title">Waiting for someone to join</p>
+          <p class="muted">Send them this link:</p>
+          <div class="invite">
+            <code id="inviteLink"></code>
+            <button id="copyInviteBtn" class="btn" type="button"><svg class="icon sm"><use href="#i-copy"/></svg>Copy</button>
+          </div>
+        </div>
+
         <video id="remoteScreen" autoplay playsinline hidden tabindex="0"></video>
-        <video id="remoteCam" autoplay playsinline></video>
-        <div id="controlBadge" hidden>You are controlling the remote computer. Press the Release button to stop.</div>
+
+        <div id="remoteTile" class="tile remote" hidden>
+          <video id="remoteCam" autoplay playsinline></video>
+          <span id="peerTag" class="name-tag"></span>
+        </div>
+
+        <div id="selfTile" class="tile self">
+          <video id="localCam" autoplay playsinline muted></video>
+          <div id="selfAvatar" class="avatar" hidden></div>
+          <span class="name-tag">You</span>
+        </div>
+
+        <div id="controllingBanner" class="banner" hidden>
+          <svg class="icon sm"><use href="#i-pointer"/></svg>
+          <span>You're controlling <b class="peer-name"></b>'s computer</span>
+          <button id="typeTextBtn" class="btn sm" type="button"><svg class="icon sm"><use href="#i-keyboard"/></svg><span class="label">Type text</span></button>
+        </div>
+        <div id="controlledBanner" class="banner danger" hidden>
+          <span class="pulse"></span>
+          <span><b class="peer-name"></b> is controlling your computer</span>
+          <button id="revokeBtn" class="btn sm light" type="button">Stop</button>
+        </div>
+
+        <div id="toasts" class="toasts" aria-live="polite"></div>
       </div>
-      <video id="localCam" autoplay playsinline muted></video>
-      <aside id="chat">
-        <div id="messages"></div>
-        <form id="chatForm"><input id="chatInput" placeholder="Message (paste logs, commands…)" autocomplete="off"></form>
+
+      <aside id="chat" class="chat" hidden>
+        <header>
+          <b>Chat</b>
+          <span class="muted small hint">Shift+Enter for a new line</span>
+          <span class="spacer"></span>
+          <button id="closeChatBtn" class="icon-btn" type="button" aria-label="Close chat"><svg class="icon"><use href="#i-x"/></svg></button>
+        </header>
+        <div id="messages" class="messages">
+          <p class="muted small center">Paste logs, commands or links here. Messages aren't saved.</p>
+        </div>
+        <form id="chatForm" class="composer">
+          <textarea id="chatInput" rows="1" placeholder="Message" autocomplete="off"></textarea>
+          <button class="icon-btn primary" type="submit" aria-label="Send"><svg class="icon"><use href="#i-send"/></svg></button>
+        </form>
       </aside>
     </main>
 
-    <footer>
-      <button id="micBtn">Mute</button>
-      <button id="camBtn">Camera off</button>
-      <button id="shareBtn">Share screen</button>
-      <button id="requestControlBtn" disabled>Request control</button>
-      <button id="releaseControlBtn" hidden>Release control</button>
-      <button id="agentBtn" class="danger" hidden>Revoke control</button>
-      <button id="leaveBtn" class="danger">Leave</button>
+    <footer class="controls">
+      <button id="micBtn" class="ctrl media-mic" type="button" title="Microphone">
+        <svg class="icon"><use href="#i-mic"/></svg><svg class="icon slash"><use href="#i-slash"/></svg><span class="label">Mic</span>
+      </button>
+      <button id="camBtn" class="ctrl media-cam" type="button" title="Camera">
+        <svg class="icon"><use href="#i-cam"/></svg><svg class="icon slash"><use href="#i-slash"/></svg><span class="label">Camera</span>
+      </button>
+      <button id="shareBtn" class="ctrl" type="button" title="Share your screen">
+        <svg class="icon"><use href="#i-share"/></svg><span class="label">Share</span>
+      </button>
+      <button id="controlBtn" class="ctrl" type="button" title="Ask to control their computer" disabled>
+        <svg class="icon"><use href="#i-pointer"/></svg><span class="label">Control</span>
+      </button>
+      <button id="chatBtn" class="ctrl" type="button" title="Chat">
+        <svg class="icon"><use href="#i-chat"/></svg><span class="label">Chat</span><span id="unread" class="badge" hidden></span>
+      </button>
+      <button id="leaveBtn" class="ctrl danger" type="button" title="Leave call">
+        <svg class="icon"><use href="#i-leave"/></svg><span class="label">Leave</span>
+      </button>
     </footer>
   </section>
 
+  <!-- ===== Dialogs ===== -->
   <dialog id="controlDialog">
-    <p><strong id="requesterName"></strong> wants to control your computer.</p>
-    <p class="muted">They will be able to move your mouse and type. You can revoke at any time.</p>
-    <menu><button id="denyBtn">Deny</button><button id="allowBtn" class="primary">Allow</button></menu>
+    <h2>Allow remote control?</h2>
+    <p><b class="peer-name"></b> will be able to move your mouse and type on this computer. You can stop it at any time.</p>
+    <menu><button id="denyBtn" class="btn" type="button">Deny</button><button id="allowBtn" class="btn primary" type="button">Allow</button></menu>
   </dialog>
 
   <dialog id="helperDialog">
-    <p><strong id="helperRequester"></strong> wants to control your computer.</p>
-    <p>To allow it, download and open <strong>DevAssist Helper</strong>. It runs without installing and stops when you close it.</p>
-    <p><a id="downloadHelper" class="button primary" href="#" download>Download</a></p>
-    <p class="muted">Waiting for the helper to start… Your browser may ask to allow access to apps on this device; choose Allow.</p>
-    <menu><a href="#" id="pairingCodeLink" class="muted">Use a pairing code</a><span style="flex:1"></span><button id="cancelHelperBtn">Cancel</button></menu>
+    <h2>One small download</h2>
+    <p><b class="peer-name"></b> wants to control your computer. Browsers can't do that by themselves, so open <b>DevAssist Helper</b>. It runs without installing and stops when you close it.</p>
+    <a id="downloadHelper" class="btn primary block" href="#" download>Download</a>
+    <p class="waiting"><span class="spinner"></span>Waiting for the helper to open…</p>
+    <p class="muted small">If your browser asks to let this site reach apps on your device, choose Allow.</p>
+    <menu><a href="#" id="pairingCodeLink" class="muted small">Use a pairing code</a><span class="spacer"></span><button id="cancelHelperBtn" class="btn" type="button">Cancel</button></menu>
+  </dialog>
+
+  <dialog id="typeDialog">
+    <form id="typeForm" method="dialog">
+      <h2>Type on their computer</h2>
+      <p class="muted small">The text is typed wherever their cursor is.</p>
+      <textarea id="typeInput" rows="3" placeholder="e.g. npm run dev"></textarea>
+      <menu>
+        <button class="btn" value="cancel" type="button" id="typeCancelBtn">Cancel</button>
+        <span class="spacer"></span>
+        <button class="btn" value="type" id="typeOnlyBtn">Type</button>
+        <button class="btn primary" value="enter" id="typeEnterBtn">Type + Enter</button>
+      </menu>
+    </form>
   </dialog>
 
   <script src="/app.js"></script>

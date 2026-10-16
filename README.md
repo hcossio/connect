@@ -62,8 +62,10 @@ cd helper && npm ci && npx tauri dev     # run locally
 ```
 
 Builds for Windows (portable .exe), Mac (universal .dmg) and Linux (AppImage)
-come from `.github/workflows/helper.yml`. Run the "Helper app" workflow manually (or push a
-`helper-v*` tag) to publish them as a GitHub release; the server's `/download/<os>` route points
+come from `.github/workflows/helper.yml`. Merging a change under `helper/` into main (or running the
+"Helper app" workflow manually) publishes them as the GitHub release
+`helper-v<version>`; bump `version` in `helper/package.json` and
+`helper/src-tauri/tauri.conf.json` for a new release. the server's `/download/<os>` route points
 there. While the repo is private, set `GITHUB_TOKEN` on the server (a
 fine-grained token with read access to this repo's contents) so downloads work.
 Allowed web origins are baked in at build time (`DEVASSIST_ORIGINS`, defaults

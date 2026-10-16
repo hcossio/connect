@@ -20,7 +20,7 @@ const PORT: u16 = 47800;
 /// DEVASSIST_ORIGINS="https://a.example,https://b.example".
 fn allowed_origins() -> Vec<String> {
     option_env!("DEVASSIST_ORIGINS")
-        .unwrap_or("https://web-production-7e260.up.railway.app,http://localhost:3000")
+        .unwrap_or("https://connect.marcah.com,https://web-production-7e260.up.railway.app,http://localhost:3000")
         .split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())

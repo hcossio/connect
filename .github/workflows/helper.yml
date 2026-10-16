@@ -5,6 +5,7 @@ on:
     paths: ["helper/**", ".github/workflows/helper.yml"]
   push:
     tags: ["helper-v*"]
+  # Run manually to publish a release tagged helper-v<version from helper/package.json>.
   workflow_dispatch:
 
 permissions:
@@ -75,14 +76,24 @@ jobs:
           path: helper/dist/*
 
   release:
-    if: startsWith(github.ref, 'refs/tags/helper-v')
+    if: startsWith(github.ref, 'refs/tags/helper-v') || github.event_name == 'workflow_dispatch'
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - name: Pick tag
+        id: tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT";
+          else echo "name=helper-v$(jq -r .version helper/package.json)" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          name: DevAssist Helper ${{ steps.tag.outputs.name }}
+          make_latest: true
           files: dist/*

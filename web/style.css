@@ -98,6 +98,8 @@ textarea { resize: none; }
   color: #fff; cursor: pointer; backdrop-filter: blur(6px);
 }
 .round.off { background: var(--danger); border-color: var(--danger); }
+/* The noise filter being off is a choice, not a warning: no red. */
+.round.media-noise.off { background: rgba(0,0,0,.35); border-color: rgba(255,255,255,.25); color: rgba(255,255,255,.6); }
 .lobby-form { display: grid; gap: 14px; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 17px; }
 .lobby-form h1 { font-size: 28px; margin-top: 6px; }
@@ -237,6 +239,7 @@ textarea { resize: none; }
 .ctrl:disabled { opacity: .4; cursor: default; }
 .ctrl.off { background: var(--danger); color: #fff; }
 .ctrl.active { background: var(--accent); color: #fff; }
+.ctrl.media-noise.off { background: var(--surface-2); color: var(--muted); }
 .ctrl.danger { background: var(--danger); color: #fff; }
 .ctrl.danger:hover { background: var(--danger-hover); }
 .ctrl .icon.slash { left: 18px; }
@@ -302,13 +305,13 @@ dialog textarea { font: 14px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monos
   .chat { inset: 0; top: 0; right: 0; bottom: 0; width: 100%; border-radius: 0; border: 0; padding-bottom: var(--safe-b); }
   .chat header .hint { display: none; }
 
-  .controls { gap: 6px; justify-content: space-between; }
-  .ctrl { width: 48px; padding: 0; justify-content: center; flex: none; }
+  .controls { gap: 4px; justify-content: space-between; }
+  .ctrl { width: 44px; height: 44px; padding: 0; justify-content: center; flex: none; }
   .ctrl .label { display: none; }
-  .ctrl .icon.slash { left: 13px; }
+  .ctrl .icon.slash { left: 11px; }
 }
 
 @media (max-width: 360px) {
-  .ctrl { width: 42px; height: 42px; }
-  .ctrl .icon.slash { left: 10px; }
+  .ctrl { width: 40px; height: 40px; }
+  .ctrl .icon.slash { left: 9px; }
 }

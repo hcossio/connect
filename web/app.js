@@ -76,12 +76,77 @@ function syncMediaButtons() {
   $('selfAvatar').hidden = camOn;
   $('selfAvatar').textContent = initials(state.myName);
 }
+function syncNoiseButtons() {
+  for (const b of $$('.media-noise')) {
+    b.hidden = !noise.node;
+    b.classList.toggle('off', !noise.on);
+    b.title = noise.on ? 'Noise filter on: only voices come through' : 'Noise filter off';
+  }
+}
 for (const b of $$('.media-mic')) b.onclick = () => {
   const t = state.camStream.getAudioTracks()[0]; if (t) t.enabled = !t.enabled; syncMediaButtons();
 };
 for (const b of $$('.media-cam')) b.onclick = () => {
   const t = state.camStream.getVideoTracks()[0]; if (t) t.enabled = !t.enabled; syncMediaButtons();
 };
+for (const b of $$('.media-noise')) b.onclick = () => {
+  noise.on = !noise.on;
+  try { localStorage.setItem('devassist:noise', noise.on ? 'on' : 'off'); } catch {}
+  routeMic();
+  syncNoiseButtons();
+  toast(noise.on ? 'Noise filter on' : 'Noise filter off', 2000);
+};
+
+// ---------- Noise filter ----------
+// The mic runs through RNNoise, a small speech model that keeps voices and
+// drops keyboards, fans, traffic and background chatter. It runs locally in
+// an AudioWorklet. Turning it on or off only reroutes the audio graph, so the
+// track sent to the other person never changes and nothing renegotiates.
+const NOISE_LIB = '/vendor/noise';
+const noise = { on: true, ctx: null, src: null, node: null, dest: null, raw: null };
+try { noise.on = localStorage.getItem('devassist:noise') !== 'off'; } catch {}
+
+async function filterMic(raw) {
+  const ctx = new AudioContext({ sampleRate: 48000 }); // RNNoise expects 48 kHz
+  try {
+    const lib = await import(`${NOISE_LIB}/index.js`);
+    const [wasmBinary] = await Promise.all([
+      lib.loadRnnoise({ url: `${NOISE_LIB}/rnnoise.wasm`, simdUrl: `${NOISE_LIB}/rnnoise_simd.wasm` }),
+      ctx.audioWorklet.addModule(`${NOISE_LIB}/rnnoise/workletProcessor.js`),
+    ]);
+    Object.assign(noise, {
+      ctx, raw,
+      node: new lib.RnnoiseWorkletNode(ctx, { wasmBinary, maxChannels: 1 }),
+      src: ctx.createMediaStreamSource(new MediaStream([raw])),
+      dest: ctx.createMediaStreamDestination(),
+    });
+    noise.node.connect(noise.dest);
+    routeMic();
+    resumeAudio();
+    return noise.dest.stream.getAudioTracks()[0];
+  } catch (err) {
+    console.warn('Noise filter unavailable, sending the mic as is:', err);
+    ctx.close();
+    return raw;
+  }
+}
+function routeMic() {
+  if (!noise.node) return;
+  noise.src.disconnect();
+  noise.src.connect(noise.on ? noise.node : noise.dest);
+}
+// Browsers start audio suspended until the person interacts with the page.
+function resumeAudio() {
+  if (noise.ctx?.state === 'suspended') noise.ctx.resume().catch(() => {});
+}
+addEventListener('pointerdown', resumeAudio, true);
+addEventListener('keydown', resumeAudio, true);
+function stopNoise() {
+  noise.raw?.stop();
+  noise.node?.destroy();
+  noise.ctx?.close().catch(() => {});
+  noise.node = null;
+}
 
 // ---------- Lobby ----------
 const urlRoom = location.pathname.startsWith('/r/') ? decodeURIComponent(location.pathname.slice(3)) : '';
@@ -97,18 +162,35 @@ $('roomInput').oninput = () => {
   $('joinBtn').textContent = $('roomInput').value.trim() ? 'Join call' : 'Start call';
 };
 
-(async function startPreview() {
+const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+const previewReady = (async function startPreview() {
+  let stream = new MediaStream();
   try {
-    state.camStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO, video: true });
   } catch {
     // Fall back to whatever is available; joining works with neither.
-    try { state.camStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch {}
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO }); } catch {}
   }
-  $('previewVideo').srcObject = state.camStream;
+  state.camStream = stream;
+  $('previewVideo').srcObject = stream;
   syncMediaButtons();
+  const raw = stream.getAudioTracks()[0];
+  if (raw && window.AudioWorkletNode) {
+    const mic = await filterMic(raw);
+    state.camStream = new MediaStream([mic, ...stream.getVideoTracks()]);
+  }
+  syncMediaButtons();
+  syncNoiseButtons();
 })();
+syncNoiseButtons();
 
-$('lobbyForm').onsubmit = (e) => { e.preventDefault(); join(); };
+$('lobbyForm').onsubmit = async (e) => {
+  e.preventDefault();
+  resumeAudio();
+  $('joinBtn').disabled = true;
+  await previewReady; // so the call starts with the filtered mic
+  join();
+};
 
 function join() {
   state.myName = $('nameInput').value.trim() || 'Guest';
@@ -347,6 +429,7 @@ function teardown() {
   state.ws?.close();
   resetPeer();
   state.camStream.getTracks().forEach((t) => t.stop());
+  stopNoise();
   document.title = TITLE;
 }
 

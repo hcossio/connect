@@ -9,6 +9,7 @@
     "agent": "node agent/index.js"
   },
   "dependencies": {
+    "@sapphi-red/web-noise-suppressor": "^0.4.1",
     "express": "^4.21.2",
     "ws": "^8.18.0"
   },

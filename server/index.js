@@ -10,6 +10,7 @@ const MAX_PEERS = 2; // support sessions are 1:1 (helper + person being helped)
 
 const app = express();
 app.use(express.static(path.join(__dirname, '..', 'web')));
+app.use('/vendor/noise', express.static(path.dirname(require.resolve('@sapphi-red/web-noise-suppressor')), { maxAge: '7d' }));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 // Any /r/<room> path loads the app; the client reads the room from the URL.
 app.get('/r/:room', (_req, res) => res.sendFile(path.join(__dirname, '..', 'web', 'index.html')));

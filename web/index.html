@@ -22,6 +22,7 @@
       <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
       <symbol id="i-keyboard" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></symbol>
       <symbol id="i-send" viewBox="0 0 24 24"><path d="M14.5 21.7a.5.5 0 0 0 .9 0l6.5-19a.5.5 0 0 0-.6-.6l-19 6.5a.5.5 0 0 0 0 .9l7.9 3.2a2 2 0 0 1 1.1 1.1z"/><path d="m21.9 2.1-10.9 11"/></symbol>
+      <symbol id="i-voice" viewBox="0 0 24 24"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></symbol>
       <symbol id="i-slash" viewBox="0 0 24 24"><path d="m3 3 18 18"/></symbol>
       <symbol id="i-logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="var(--accent)" stroke="none"/><path d="M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z" fill="#fff" stroke="none"/></symbol>
     </defs>
@@ -36,6 +37,7 @@
         <div class="preview-controls">
           <button class="round media-mic" type="button" title="Microphone"><svg class="icon"><use href="#i-mic"/></svg><svg class="icon slash"><use href="#i-slash"/></svg></button>
           <button class="round media-cam" type="button" title="Camera"><svg class="icon"><use href="#i-cam"/></svg><svg class="icon slash"><use href="#i-slash"/></svg></button>
+          <button class="round media-noise" type="button" title="Noise filter"><svg class="icon"><use href="#i-voice"/></svg><svg class="icon slash"><use href="#i-slash"/></svg></button>
         </div>
       </div>
       <form id="lobbyForm" class="lobby-form">
@@ -125,6 +127,9 @@
       </button>
       <button id="camBtn" class="ctrl media-cam" type="button" title="Camera">
         <svg class="icon"><use href="#i-cam"/></svg><svg class="icon slash"><use href="#i-slash"/></svg><span class="label">Camera</span>
+      </button>
+      <button id="noiseBtn" class="ctrl media-noise" type="button" title="Noise filter">
+        <svg class="icon"><use href="#i-voice"/></svg><svg class="icon slash"><use href="#i-slash"/></svg><span class="label">Noise filter</span>
       </button>
       <button id="shareBtn" class="ctrl" type="button" title="Share your screen">
         <svg class="icon"><use href="#i-share"/></svg><span class="label">Share</span>

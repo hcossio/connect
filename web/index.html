@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DevAssist</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Lobby -->
+  <section id="lobby">
+    <h1>DevAssist</h1>
+    <p class="muted">Calls, screen sharing and remote control for technical help.</p>
+    <input id="nameInput" placeholder="Your name" maxlength="40">
+    <input id="roomInput" placeholder="Room code (leave empty for a new one)" maxlength="64">
+    <button id="joinBtn" class="primary">Join</button>
+  </section>
+
+  <!-- Call -->
+  <section id="call" hidden>
+    <header>
+      <span id="roomLabel"></span>
+      <button id="copyLinkBtn">Copy invite link</button>
+      <span id="status" class="muted">Waiting for the other person…</span>
+    </header>
+
+    <main>
+      <div id="stage">
+        <video id="remoteScreen" autoplay playsinline hidden tabindex="0"></video>
+        <video id="remoteCam" autoplay playsinline></video>
+        <div id="controlBadge" hidden>You are controlling the remote computer. Press the Release button to stop.</div>
+      </div>
+      <video id="localCam" autoplay playsinline muted></video>
+      <aside id="chat">
+        <div id="messages"></div>
+        <form id="chatForm"><input id="chatInput" placeholder="Message (paste logs, commands…)" autocomplete="off"></form>
+      </aside>
+    </main>
+
+    <footer>
+      <button id="micBtn">Mute</button>
+      <button id="camBtn">Camera off</button>
+      <button id="shareBtn">Share screen</button>
+      <button id="requestControlBtn" disabled>Request control</button>
+      <button id="releaseControlBtn" hidden>Release control</button>
+      <button id="agentBtn" title="Connect the local DevAssist agent so a helper can control this computer">Connect agent</button>
+      <button id="leaveBtn" class="danger">Leave</button>
+    </footer>
+  </section>
+
+  <dialog id="controlDialog">
+    <p><strong id="requesterName"></strong> wants to control your computer.</p>
+    <p class="muted">They will be able to move your mouse and type. You can revoke at any time.</p>
+    <menu><button id="denyBtn">Deny</button><button id="allowBtn" class="primary">Allow</button></menu>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>

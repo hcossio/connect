@@ -1,0 +1,17 @@
+{
+  "name": "devassist",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Minimal video calls + screen sharing + remote control for technical support",
+  "scripts": {
+    "start": "node server/index.js",
+    "agent": "node agent/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  },
+  "optionalDependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6"
+  }
+}

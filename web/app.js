@@ -51,6 +51,7 @@ function updateStage() {
   $('stage').dataset.mode = screen ? 'screen' : state.peerPresent ? 'cam' : 'empty';
   $('emptyState').hidden = state.peerPresent;
   $('remoteTile').hidden = !state.peerPresent;
+  placeTiles();
 }
 function initials(name) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
@@ -146,6 +147,118 @@ function stopNoise() {
   noise.node?.destroy();
   noise.ctx?.close().catch(() => {});
   noise.node = null;
+}
+
+// ---------- Movable camera tiles ----------
+// Floating tiles (your camera, and theirs during a screen share) can be
+// dragged around the stage. Positions are kept as fractions of the free
+// space so they stay put when the window or the chat panel resizes.
+const TILES = [$('selfTile'), $('remoteTile')];
+const tilePos = new Map();
+const isFloating = (tile) => !tile.hidden && (tile.id === 'selfTile' || $('stage').dataset.mode === 'screen');
+function placeTile(tile) {
+  const p = tilePos.get(tile);
+  if (!p || !isFloating(tile)) {
+    tile.style.left = tile.style.top = tile.style.right = tile.style.bottom = '';
+    return;
+  }
+  const maxX = Math.max(0, $('stage').clientWidth - tile.offsetWidth);
+  const maxY = Math.max(0, $('stage').clientHeight - tile.offsetHeight);
+  Object.assign(tile.style, { left: `${p.x * maxX}px`, top: `${p.y * maxY}px`, right: 'auto', bottom: 'auto' });
+}
+function placeTiles() { TILES.forEach(placeTile); }
+for (const tile of TILES) {
+  tile.addEventListener('pointerdown', (e) => {
+    if (!isFloating(tile) || e.button !== 0 || e.target.closest('button')) return;
+    e.preventDefault();
+    const stage = $('stage').getBoundingClientRect();
+    const start = tile.getBoundingClientRect();
+    const grabX = e.clientX - start.left, grabY = e.clientY - start.top;
+    const maxX = stage.width - start.width, maxY = stage.height - start.height;
+    tile.setPointerCapture(e.pointerId);
+    tile.classList.add('dragging');
+    const move = (ev) => {
+      const x = Math.min(Math.max(ev.clientX - stage.left - grabX, 0), maxX);
+      const y = Math.min(Math.max(ev.clientY - stage.top - grabY, 0), maxY);
+      tilePos.set(tile, { x: maxX > 0 ? x / maxX : 0, y: maxY > 0 ? y / maxY : 0 });
+      placeTile(tile);
+    };
+    const end = () => {
+      tile.classList.remove('dragging');
+      tile.removeEventListener('pointermove', move);
+      tile.removeEventListener('pointerup', end);
+      tile.removeEventListener('pointercancel', end);
+    };
+    tile.addEventListener('pointermove', move);
+    tile.addEventListener('pointerup', end);
+    tile.addEventListener('pointercancel', end);
+  });
+}
+new ResizeObserver(placeTiles).observe($('stage'));
+
+// ---------- Pop-out cameras ----------
+// Chrome and Edge open a small always-on-top window with both cameras and a
+// mic button (Document Picture-in-Picture), so you can keep seeing each other
+// while working in another app. Safari falls back to the browser's video
+// picture-in-picture for the camera you clicked.
+const CAN_DOC_PIP = 'documentPictureInPicture' in window;
+const CAN_VIDEO_PIP = !!document.pictureInPictureEnabled;
+let pip = null, pipTimer = null;
+for (const b of $$('.pop-btn')) {
+  b.hidden = !(CAN_DOC_PIP || CAN_VIDEO_PIP);
+  b.onclick = (e) => popOut(e.currentTarget.closest('.tile').querySelector('video'));
+}
+async function popOut(video) {
+  if (pip) return pip.close();
+  if (!CAN_DOC_PIP) {
+    try { await video.requestPictureInPicture(); } catch { toast('Your browser blocked the pop-out window.'); }
+    return;
+  }
+  try {
+    pip = await documentPictureInPicture.requestWindow({ width: 360, height: 225 });
+  } catch {
+    return toast('Your browser blocked the pop-out window.');
+  }
+  const d = pip.document;
+  d.title = 'DevAssist';
+  for (const link of document.querySelectorAll('link[rel="stylesheet"]')) d.head.append(link.cloneNode());
+  d.body.append($('sprite').cloneNode(true));
+  d.body.insertAdjacentHTML('beforeend', `
+    <div class="pip">
+      <video class="pip-remote" autoplay playsinline muted></video>
+      <div class="pip-wait">Waiting for the other person</div>
+      <span class="name-tag"></span>
+      <div class="pip-self"><video autoplay playsinline muted></video><div class="avatar" hidden></div></div>
+      <button class="ctrl" type="button"><svg class="icon"><use href="#i-mic"/></svg><svg class="icon slash"><use href="#i-slash"/></svg></button>
+    </div>`);
+  d.querySelector('.ctrl').onclick = () => { $('micBtn').click(); syncPip(); };
+  $('stage').classList.add('popped');
+  syncPip();
+  pipTimer = setInterval(syncPip, 500); // streams and names change during the call
+  pip.addEventListener('pagehide', () => {
+    clearInterval(pipTimer);
+    pip = null;
+    $('stage').classList.remove('popped');
+    placeTiles();
+  });
+}
+function syncPip() {
+  if (!pip) return;
+  const d = pip.document;
+  const remote = state.peerPresent ? $('remoteCam').srcObject : null;
+  const rv = d.querySelector('.pip-remote'), sv = d.querySelector('.pip-self video');
+  if (rv.srcObject !== remote) rv.srcObject = remote; // muted: the call's audio keeps playing in the tab
+  if (sv.srcObject !== state.camStream) sv.srcObject = state.camStream;
+  d.querySelector('.pip-wait').hidden = !!remote;
+  d.querySelector('.name-tag').textContent = state.peerPresent ? state.peerName : 'You';
+  const a = state.camStream.getAudioTracks()[0], v = state.camStream.getVideoTracks()[0];
+  const mic = d.querySelector('.ctrl');
+  mic.disabled = !a;
+  mic.classList.toggle('off', !a || !a.enabled);
+  mic.title = !a ? 'No microphone' : a.enabled ? 'Mute microphone' : 'Unmute microphone';
+  const avatar = d.querySelector('.pip-self .avatar');
+  avatar.hidden = !!v && v.enabled;
+  avatar.textContent = initials(state.myName);
 }
 
 // ---------- Lobby ----------
@@ -430,6 +543,7 @@ function teardown() {
   resetPeer();
   state.camStream.getTracks().forEach((t) => t.stop());
   stopNoise();
+  pip?.close();
   document.title = TITLE;
 }
 

@@ -42,6 +42,10 @@ Sessions close on their own so nobody leaves one open by accident:
 
 Tune with `SESSION_MINUTES` (default 120) and `SESSION_GRACE_MINUTES` (default 5) on the server.
 
+## Camera tiles
+
+Your camera, and the other person's camera during a screen share, float over the stage and can be dragged anywhere (mouse or touch). The pop-out button on a camera opens a small always-on-top window with both cameras and a mic button, so you can keep seeing each other while working in another app. It uses Document Picture-in-Picture in Chrome and Edge, and falls back to the browser's video picture-in-picture in Safari.
+
 ## Noise filter
 
 Each person's mic runs through [RNNoise](https://jmvalin.ca/demo/rnnoise/) (via [`@sapphi-red/web-noise-suppressor`](https://github.com/sapphi-red/web-noise-suppressor), MIT) before it is sent, so keyboards, fans, traffic and background chatter are removed and voices come through. It runs locally in the browser in an AudioWorklet; no audio leaves the call. It's on by default, the waveform button turns it off and on (the choice is remembered), and switching doesn't interrupt the call. The browser's built-in echo cancellation and noise suppression stay on underneath. Browsers that can't run it fall back to the plain mic and hide the button.

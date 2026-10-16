@@ -177,6 +177,32 @@ textarea { resize: none; }
   box-shadow: 0 6px 24px rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.08); z-index: 2;
 }
 .stage[data-mode="empty"] .tile.self { width: 240px; }
+/* Floating tiles can be dragged anywhere on the stage. */
+.tile.self, .stage[data-mode="screen"] .tile.remote { cursor: grab; touch-action: none; user-select: none; }
+.tile.dragging { cursor: grabbing; opacity: .9; }
+.tile-btn {
+  position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; display: grid; place-items: center;
+  border: 0; border-radius: 8px; background: rgba(0,0,0,.55); color: #fff; cursor: pointer;
+  opacity: 0; transition: opacity .15s;
+}
+.tile:hover .tile-btn, .tile-btn:focus-visible { opacity: 1; }
+@media (hover: none) { .tile-btn { opacity: 1; } }
+.stage[data-mode="cam"] .tile.remote .tile-btn { top: 12px; right: 12px; }
+/* While the cameras are popped out, don't show them twice. */
+.stage.popped .tile.self, .stage.popped[data-mode="screen"] .tile.remote { display: none; }
+
+/* ---------- Pop-out camera window (Document Picture-in-Picture) ---------- */
+.pip { position: fixed; inset: 0; background: #05070a; overflow: hidden; }
+.pip-remote { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pip-wait { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; }
+.pip-self {
+  position: absolute; right: 8px; bottom: 8px; width: 30%; aspect-ratio: 16 / 10; border-radius: 8px; overflow: hidden;
+  background: var(--surface-2); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 4px 16px rgba(0,0,0,.5);
+}
+.pip-self video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block; }
+.pip .name-tag { top: 8px; bottom: auto; }
+.pip .ctrl { position: absolute; left: 8px; bottom: 8px; width: 40px; height: 40px; padding: 0; justify-content: center; }
+.pip .ctrl .icon.slash { left: 8px; }
 
 /* ---------- Banners and toasts ---------- */
 .banner {

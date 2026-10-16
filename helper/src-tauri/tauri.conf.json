@@ -1,11 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "DevAssist Helper",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "identifier": "app.devassist.helper",
   "build": { "frontendDist": "../ui" },
   "app": {
     "withGlobalTauri": true,
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",

@@ -16,6 +16,7 @@
       <symbol id="i-cam" viewBox="0 0 24 24"><path d="m16 13 5.2 3.5a.5.5 0 0 0 .8-.4V7.9a.5.5 0 0 0-.8-.4L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></symbol>
       <symbol id="i-share" viewBox="0 0 24 24"><path d="m9 10 3-3 3 3"/><path d="M12 13V7"/><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M12 17v4"/><path d="M8 21h8"/></symbol>
       <symbol id="i-pointer" viewBox="0 0 24 24"><path d="M12.6 12.6 19 19"/><path d="M3.7 3a.5.5 0 0 0-.7.7l6.5 16a.5.5 0 0 0 1-.1l1.5-6a2 2 0 0 1 1.5-1.5l6.1-1.6a.5.5 0 0 0 .1-1z"/></symbol>
+      <symbol id="i-cursors" viewBox="0 0 24 24"><path d="M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.44l-1.58 6.12a.5.5 0 0 1-.95.06z"/></symbol>
       <symbol id="i-chat" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></symbol>
       <symbol id="i-leave" viewBox="0 0 24 24"><path d="M10.1 13.9a14 14 0 0 0 3.7 2.7 1 1 0 0 0 1.2-.3l.4-.5A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.5.4a1 1 0 0 0-.3 1.2l.3.5"/><path d="m2 2 20 20"/></symbol>
       <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
@@ -79,6 +80,7 @@
         </div>
 
         <video id="remoteScreen" autoplay playsinline hidden tabindex="0"></video>
+        <div id="pointers" class="pointers" aria-hidden="true"></div>
 
         <div id="grid" class="grid" hidden></div>
         <div id="screenChip" class="screen-chip" hidden></div>
@@ -136,6 +138,9 @@
       </button>
       <button id="controlBtn" class="ctrl" type="button" title="Ask to control their computer" disabled>
         <svg class="icon"><use href="#i-pointer"/></svg><span class="label">Control</span>
+      </button>
+      <button id="pointersBtn" class="ctrl" type="button" title="Show everyone's mouse pointers on the shared screen" hidden>
+        <svg class="icon"><use href="#i-cursors"/></svg><span class="label">Pointers</span><span id="myColor" class="swatch"></span>
       </button>
       <button id="chatBtn" class="ctrl" type="button" title="Chat">
         <svg class="icon"><use href="#i-chat"/></svg><span class="label">Chat</span><span id="unread" class="badge" hidden></span>

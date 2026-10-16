@@ -152,6 +152,19 @@ textarea { resize: none; }
 #remoteScreen { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; outline: none; background: #000; }
 #remoteScreen.controlling { cursor: crosshair; touch-action: none; }
 
+/* Other people's mouse pointers over the shared screen, each in their color. */
+.pointers { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.pointer {
+  position: absolute; left: 0; top: 0; display: flex; align-items: flex-start;
+  transition: transform 70ms linear, opacity .4s; will-change: transform;
+}
+.pointer svg { width: 22px; height: 22px; fill: var(--c); stroke: #fff; stroke-width: 1.5; stroke-linejoin: round; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
+.pointer span {
+  margin: 16px 0 0 -4px; padding: 2px 8px; border-radius: 999px; background: var(--c); color: #fff;
+  font-size: 12px; font-weight: 600; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,.4);
+}
+.pointer.idle { opacity: .35; }
+
 .tile { position: absolute; overflow: hidden; background: var(--surface-2); }
 .tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .name-tag {
@@ -284,7 +297,7 @@ textarea { resize: none; }
   border: 0; border-radius: 999px; background: var(--surface-2); color: var(--text);
   font-weight: 500; cursor: pointer; transition: background .15s;
 }
-.ctrl:hover:not(:disabled) { background: var(--surface-3); }
+.ctrl:not(.active, .off, .danger):hover:not(:disabled) { background: var(--surface-3); }
 .ctrl:disabled { opacity: .4; cursor: default; }
 .ctrl.off { background: var(--danger); color: #fff; }
 .ctrl.active { background: var(--accent); color: #fff; }
@@ -292,6 +305,7 @@ textarea { resize: none; }
 .ctrl.danger { background: var(--danger); color: #fff; }
 .ctrl.danger:hover { background: var(--danger-hover); }
 .ctrl .icon.slash { left: 18px; }
+.ctrl .swatch { width: 10px; height: 10px; border-radius: 50%; background: var(--c, transparent); box-shadow: 0 0 0 2px rgba(255,255,255,.85); }
 .badge {
   position: absolute; top: 4px; right: 6px; min-width: 18px; height: 18px; padding: 0 5px;
   border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 600;
@@ -359,12 +373,14 @@ dialog textarea { font: 14px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monos
   .chat header .hint { display: none; }
 
   .controls { gap: 4px; justify-content: space-between; }
-  .ctrl { width: 44px; height: 44px; padding: 0; justify-content: center; flex: none; }
+  .ctrl { width: 44px; height: 44px; padding: 0; justify-content: center; flex: 0 1 44px; min-width: 34px; }
   .ctrl .label { display: none; }
-  .ctrl .icon.slash { left: 11px; }
+  .ctrl .icon.slash { left: calc(50% - 11px); }
+  .ctrl .swatch { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; }
+  .pointer svg { width: 18px; height: 18px; }
+  .pointer span { font-size: 11px; padding: 1px 6px; }
 }
 
 @media (max-width: 360px) {
-  .ctrl { width: 40px; height: 40px; }
-  .ctrl .icon.slash { left: 9px; }
+  .ctrl { width: 40px; height: 40px; flex-basis: 40px; }
 }

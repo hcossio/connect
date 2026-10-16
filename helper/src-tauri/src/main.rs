@@ -1,14 +1,16 @@
 // DevAssist Helper: a tiny desktop app the person being helped double-clicks.
 // It listens on 127.0.0.1 only, accepts connections only from the DevAssist
 // web app's origins, and injects mouse and keyboard input while the web app
-// says control has been allowed. Closing the window or pressing Stop ends it.
+// says control has been allowed. It also draws the call's pointers on this
+// screen in a transparent, click-through window. Closing the window or
+// pressing Stop ends it.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use futures_util::StreamExt;
 use serde::Deserialize;
 use std::sync::{mpsc, Mutex};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tokio_tungstenite::tungstenite::http::StatusCode;
@@ -45,6 +47,9 @@ enum Event {
     },
     Keyup {},
     Control { on: bool },
+    // Someone in the call pointing at this screen; drawn by the overlay.
+    Pointer { id: u32, name: String, color: String, x: f64, y: f64 },
+    PointerOff { id: u32 },
 }
 
 // Last status, so the window can show it even if it was emitted before the page loaded.
@@ -148,7 +153,7 @@ fn inject(enigo: &mut Enigo, (w, h): (i32, i32), ev: Event) -> Result<(), enigo:
             for m in mods.iter().rev() { enigo.key(*m, Direction::Release)?; }
             r
         }
-        Event::Keyup {} | Event::Control { .. } => Ok(()),
+        Event::Keyup {} | Event::Control { .. } | Event::Pointer { .. } | Event::PointerOff { .. } => Ok(()),
     }
 }
 
@@ -161,6 +166,46 @@ fn input_thread(rx: mpsc::Receiver<Event>) {
         // Re-read each time so a resolution change mid-session still maps correctly.
         let size = enigo.main_display().unwrap_or((1920, 1080));
         if let Err(e) = inject(&mut enigo, size, ev) { eprintln!("input error: {e}"); }
+    }
+}
+
+// ---------- Pointer overlay ----------
+
+const OVERLAY: &str = "overlay";
+
+/// A transparent, click-through, always-on-top window over the main display
+/// (the same one input is mapped to), shown while the web app is connected.
+fn create_overlay(app: &AppHandle) -> tauri::Result<()> {
+    let win = WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App("overlay.html".into()))
+        .title("DevAssist pointers")
+        .transparent(true)
+        .decorations(false)
+        .shadow(false)
+        .resizable(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible_on_all_workspaces(true)
+        .focused(false)
+        .focusable(false)
+        .visible(false)
+        .build()?;
+    win.set_ignore_cursor_events(true)?;
+    Ok(())
+}
+
+fn show_overlay(app: &AppHandle, on: bool) {
+    let Some(win) = app.get_webview_window(OVERLAY) else { return };
+    if on {
+        // Re-fit each time so a resolution change between calls still lines up.
+        if let Ok(Some(m)) = win.primary_monitor() {
+            let _ = win.set_position(*m.position());
+            let _ = win.set_size(*m.size());
+        }
+        let _ = win.show();
+        let _ = win.set_ignore_cursor_events(true);
+    } else {
+        let _ = app.emit_to(OVERLAY, "pointers-clear", ());
+        let _ = win.hide();
     }
 }
 
@@ -193,10 +238,23 @@ async fn serve(app: AppHandle, input: mpsc::Sender<Event>) {
         // One session at a time: handle it here before accepting the next.
         status(&app, "connected", &format!("Connected to {origin}. Nobody is controlling this computer."));
         let mut controlled = false;
+        let mut overlay = false;
         while let Some(Ok(msg)) = ws.next().await {
             let Message::Text(text) = msg else { continue };
             let Ok(ev) = serde_json::from_str::<Event>(&text) else { continue };
             match ev {
+                Event::Pointer { id, name, color, x, y } => {
+                    if !overlay {
+                        overlay = true;
+                        show_overlay(&app, true);
+                    }
+                    let name: String = name.chars().take(40).collect();
+                    let payload = serde_json::json!({ "type": "pointer", "id": id, "name": name, "color": color, "x": x, "y": y });
+                    let _ = app.emit_to(OVERLAY, "pointer", payload);
+                }
+                Event::PointerOff { id } => {
+                    let _ = app.emit_to(OVERLAY, "pointer", serde_json::json!({ "type": "pointeroff", "id": id }));
+                }
                 Event::Control { on } => {
                     controlled = on;
                     if on {
@@ -208,6 +266,9 @@ async fn serve(app: AppHandle, input: mpsc::Sender<Event>) {
                 ev if controlled => { let _ = input.send(ev); }
                 _ => {}
             }
+        }
+        if overlay {
+            show_overlay(&app, false);
         }
         status(&app, "waiting", "Disconnected. Waiting for DevAssist.");
     }
@@ -225,6 +286,9 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![stop, get_status])
         .setup(move |app| {
+            if let Err(e) = create_overlay(app.handle()) {
+                eprintln!("cannot create pointer overlay: {e}");
+            }
             tauri::async_runtime::spawn(serve(app.handle().clone(), tx));
             Ok(())
         })

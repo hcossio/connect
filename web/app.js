@@ -24,6 +24,7 @@ const state = {
   controlling: null,        // helper side: the person we are controlling
   controlPending: null,     // helper side: the person we asked, waiting for an answer
   unread: 0,
+  pointers: false,          // show mouse pointers on the shared screen
   isHost: false,            // started the session: gets the "still there?" check
   ended: false,
 };
@@ -32,7 +33,8 @@ const state = {
  * @type {Map<number, { id: number, name: string, pc: RTCPeerConnection, dc: RTCDataChannel,
  *   polite: boolean, makingOffer: boolean, ignoreOffer: boolean, waitForOffer: boolean, streams: Map<string, MediaStream>,
  *   cam: MediaStream|null, screen: MediaStream|null, screenStreamId: string|null, sharedAt: number,
- *   tile: HTMLElement }>}
+ *   tile: HTMLElement, pointer?: { on: number, x: number, y: number }|null, pointerEl?: HTMLElement,
+ *   pointerSent?: boolean }>}
  */
 const peers = new Map();
 const TITLE = document.title;
@@ -101,6 +103,7 @@ function updateStage() {
   updateControlBtn();
   layoutGrid();
   placeTiles();
+  syncPointers();
 }
 // Pick the column count that gives the biggest tiles: 16:9 on landscape
 // screens, 3:4 on portrait phones.
@@ -267,7 +270,7 @@ for (const tile of TILES) {
     tile.addEventListener('pointercancel', end);
   });
 }
-new ResizeObserver(() => { layoutGrid(); placeTiles(); }).observe($('stage'));
+new ResizeObserver(() => { layoutGrid(); placeTiles(); syncPointers(); }).observe($('stage'));
 
 // ---------- Pop-out cameras ----------
 // Chrome and Edge open a small always-on-top window with everyone's cameras
@@ -500,6 +503,7 @@ function removePeer(id) {
   if (state.controlling === id || state.controlPending === id) stopControl();
   if (state.controlGrantedTo === id) revokeControl(false);
   if (state.controlRequestFrom === id) closeControlPrompts();
+  dropPointer(p);
   p.pc.close();
   p.tile.remove();
   peers.delete(id);
@@ -516,6 +520,7 @@ async function onSignal(msg) {
     case 'joined':
       state.myId = msg.id;
       state.isHost = !!msg.host;
+      $('myColor').style.setProperty('--c', colorOf(msg.id));
       for (const o of msg.peers) addPeer(o.id, o.name, true);
       updateStage();
       updateStatus();
@@ -604,6 +609,7 @@ function onData(p, m) {
       if (state.controlling === p.id) { stopControl(); systemMessage(`${p.name} took back control.`); }
       break;
     case 'input': if (state.controlGrantedTo === p.id) agentSend(m.e); break;
+    case 'pointer': onPointer(p, m); break;
   }
 }
 
@@ -622,6 +628,7 @@ $('shareBtn').onclick = async () => {
   $('shareBtn').classList.add('active');
   $('shareBtn').querySelector('.label').textContent = 'Stop';
   toast('You are sharing your screen');
+  syncPointers();
 };
 function stopShare() {
   if (!state.screenStream) return;
@@ -635,6 +642,7 @@ function stopShare() {
   revokeControl();
   $('shareBtn').classList.remove('active');
   $('shareBtn').querySelector('.label').textContent = 'Share';
+  syncPointers();
 }
 
 // ---------- Leave / invite ----------
@@ -977,6 +985,110 @@ $('typeForm').addEventListener('submit', (e) => {
   if (e.submitter?.value === 'enter') input({ type: 'keydown', key: 'Enter', code: 'Enter' });
   screenEl.focus({ preventScroll: true });
 });
+
+// ---------- Shared pointers ----------
+// With Pointers on, your mouse over the shared screen shows up, in your own
+// color, for everyone else who has Pointers on. Whoever is sharing sees them
+// drawn on their real screen by DevAssist Helper, when it's running.
+const POINTER_COLORS = ['#f97316', '#22c55e', '#ec4899', '#eab308', '#06b6d4', '#a855f7', '#ef4444', '#84cc16'];
+const colorOf = (id) => POINTER_COLORS[(id - 1) % POINTER_COLORS.length];
+let pointerOn = null; // whose screen our pointer is on, as we last told everyone
+let lastPointer = 0, lastHelperTry = 0;
+let pointerHinted = false, helperHinted = false;
+
+$('pointersBtn').onclick = () => {
+  state.pointers = !state.pointers;
+  $('pointersBtn').classList.toggle('active', state.pointers);
+  if (!state.pointers) sendPointer(null);
+  else if (state.screenStream) connectAgent().then((ok) => ok && syncPointers()); // so pointers on our screen show right away
+  syncPointers();
+};
+
+function sendPointer(pos) {
+  const on = pos && state.pointers && !state.controlling ? state.shownId : null;
+  if (on === null && pointerOn === null) return;
+  pointerOn = on;
+  broadcast(on === null ? { t: 'pointer', on: null } : { t: 'pointer', on, x: pos.x, y: pos.y });
+}
+screenEl.addEventListener('pointermove', (ev) => {
+  if (!state.pointers) return;
+  const now = performance.now(); if (now - lastPointer < 33) return; lastPointer = now; // ~30 Hz
+  sendPointer(normalized(ev));
+});
+screenEl.addEventListener('pointerleave', () => sendPointer(null));
+screenEl.addEventListener('resize', syncPointers); // the shared screen changed size
+
+function onPointer(p, m) {
+  p.pointer = m.on == null ? null : { on: m.on, x: m.x, y: m.y };
+  if (p.pointer && !state.pointers && !pointerHinted && (m.on === state.shownId || m.on === state.myId)) {
+    pointerHinted = true;
+    toast(`${p.name} is pointing at the screen. Turn on Pointers to see it.`);
+  }
+  drawPointer(p);
+}
+
+// Where the video actually is inside the stage (object-fit: contain letterboxes it).
+function screenBox() {
+  const vw = screenEl.videoWidth, vh = screenEl.videoHeight;
+  if (screenEl.hidden || !vw || !vh) return null;
+  const W = screenEl.clientWidth, H = screenEl.clientHeight;
+  const s = Math.min(W / vw, H / vh);
+  return { x: (W - vw * s) / 2, y: (H - vh * s) / 2, w: vw * s, h: vh * s };
+}
+
+function drawPointer(p) {
+  const pt = state.pointers ? p.pointer : null;
+  // On the screen we're watching.
+  const box = pt && pt.on === state.shownId ? screenBox() : null;
+  let el = p.pointerEl;
+  if (box) {
+    if (!el) {
+      el = p.pointerEl = document.createElement('div');
+      el.className = 'pointer';
+      el.hidden = true;
+      el.style.setProperty('--c', colorOf(p.id));
+      el.innerHTML = '<svg viewBox="0 0 24 24"><use href="#i-cursors"/></svg><span></span>';
+      $('pointers').append(el);
+    }
+    el.querySelector('span').textContent = p.name;
+    el.style.transform = `translate(${box.x + pt.x * box.w - 4}px, ${box.y + pt.y * box.h - 4}px)`;
+    if (el.hidden) { el.hidden = false; el.style.transition = 'none'; el.offsetWidth; el.style.transition = ''; } // appear in place, don't glide in
+    el.classList.remove('idle');
+    clearTimeout(el.idle);
+    el.idle = setTimeout(() => el.classList.add('idle'), 4000);
+  } else if (el) el.hidden = true;
+  // On our own screen: DevAssist Helper draws it over everything else.
+  if (pt && pt.on === state.myId && state.screenStream) {
+    if (state.agent) {
+      agentSend({ type: 'pointer', id: p.id, name: p.name, color: colorOf(p.id), x: pt.x, y: pt.y });
+      p.pointerSent = true;
+    } else tryHelper();
+  } else if (p.pointerSent) {
+    agentSend({ type: 'pointeroff', id: p.id });
+    p.pointerSent = false;
+  }
+}
+
+async function tryHelper() {
+  if (Date.now() - lastHelperTry < 5000) return;
+  lastHelperTry = Date.now();
+  if (await connectAgent()) return syncPointers();
+  if (helperHinted) return;
+  helperHinted = true;
+  systemMessage('Others are pointing at your screen. Open DevAssist Helper to see their pointers on it.');
+}
+
+function dropPointer(p) {
+  p.pointer = null;
+  drawPointer(p);
+  p.pointerEl?.remove();
+}
+
+function syncPointers() {
+  $('pointersBtn').hidden = !state.shownId && !state.screenStream;
+  if (pointerOn !== null && pointerOn !== state.shownId) sendPointer(null);
+  for (const p of peers.values()) drawPointer(p);
+}
 
 // Show the chat panel again when a window grows back to desktop width.
 matchMedia('(min-width: 1025px)').addEventListener('change', (e) => {

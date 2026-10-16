@@ -38,7 +38,7 @@ Extras for dev work: chat renders in monospace (paste logs and commands), and
 Sessions close on their own so nobody leaves one open by accident:
 
 - After 2 hours, whoever started the session gets a "Still in the session?" popup. If they don't press **Continue** within 5 minutes, the session closes for everyone. Pressing Continue starts another 2 hours. If the person who started it leaves, the next person in the call gets the popup instead.
-- Leaving, or closing the tab or window, takes you out of the call and stops any remote control involving you. The others carry on, but when only one person would be left the session ends for them too, so a 1:1 call still ends as soon as either person leaves.
+- Leaving, or closing the tab or window, takes you out of the call and stops any remote control involving you. Everyone else stays in, and you can rejoin with the same link. The session closes once the last person leaves.
 
 Tune with `SESSION_MINUTES` (default 120) and `SESSION_GRACE_MINUTES` (default 5) on the server. `MAX_PEERS` (default 6) caps how many people can be in a room.
 

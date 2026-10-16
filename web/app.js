@@ -638,7 +638,8 @@ function stopShare() {
 }
 
 // ---------- Leave / invite ----------
-$('leaveBtn').onclick = () => { teardown(); location.href = '/'; };
+// Leaving keeps the room open for the others; you can rejoin from the next screen.
+$('leaveBtn').onclick = () => endSession('self');
 
 // ---------- Session lifetime ----------
 $('continueBtn').onclick = () => {
@@ -671,12 +672,14 @@ function teardown() {
 }
 
 const END_REASONS = {
+  self: () => 'The others can stay in the call, and you can rejoin with the same link.',
   timeout: () => 'It closed automatically because nobody chose to continue it.',
   left: (by) => `${by || 'The other person'} left or closed their window.`,
   lost: () => 'The connection to the server was lost.',
 };
 function endSession(reason, by) {
   teardown();
+  $('endedTitle').textContent = reason === 'self' ? 'You left the call' : 'Session ended';
   $('endedReason').textContent = (END_REASONS[reason] || END_REASONS.left)(by);
   $('rejoinBtn').hidden = reason === 'timeout';
   $('call').hidden = true;

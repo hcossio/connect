@@ -56,8 +56,8 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 // Sessions end on their own so nobody leaves one open by accident: after
 // SESSION_MINUTES the person who started it is asked to continue, and if they
 // don't answer within GRACE_MINUTES the session closes for everyone. When
-// someone leaves or closes their window the others carry on, unless only one
-// person is left, in which case the session ends for them too.
+// someone leaves or closes their window the others carry on and anyone can
+// rejoin with the same link; the room goes away once the last person leaves.
 const SESSION_MS = Number(process.env.SESSION_MINUTES || 120) * 60_000;
 const GRACE_MS = Number(process.env.SESSION_GRACE_MINUTES || 5) * 60_000;
 
@@ -138,8 +138,8 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     if (!room || !room.peers.has(ws)) return;
-    if (room.peers.size <= 2) return endSession(room, 'left', ws);
     room.peers.delete(ws);
+    if (!room.peers.size) return endSession(room, 'left', ws);
     for (const p of room.peers) send(p, { type: 'peer-left', id: ws.peerId, name: ws.displayName });
     // Someone still has to be asked whether to continue: pass it on.
     if (room.host === ws) {

@@ -95,3 +95,7 @@ needs X11 (Wayland blocks synthetic input).
 2. TURN server and HTTPS deploy.
 3. Multi-monitor selection and window-relative control.
 4. Optional: file transfer over the data channel, session recording, auth.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

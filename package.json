@@ -2,6 +2,7 @@
   "name": "devassist",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "description": "Minimal video calls + screen sharing + remote control for technical support",
   "scripts": {
     "start": "node server/index.js",

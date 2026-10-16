@@ -104,6 +104,14 @@ textarea { resize: none; }
 .lobby-form p { margin: 0; }
 .field { display: grid; gap: 6px; font-size: 14px; font-weight: 500; }
 
+/* ---------- Session ended ---------- */
+.ended { height: 100%; display: grid; place-items: center; padding: 24px var(--gutter); }
+.ended-card { max-width: 420px; display: grid; justify-items: center; gap: 12px; text-align: center; }
+.ended-card .logo { width: 44px; height: 44px; }
+.ended-card h1 { font-size: 26px; }
+.ended-card p { margin: 0; }
+.ended-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 8px; }
+
 /* ---------- Call layout ---------- */
 .call { height: 100%; height: 100dvh; display: grid; grid-template-rows: auto 1fr auto; }
 .topbar { display: flex; align-items: center; gap: 12px; padding: 10px var(--gutter); min-width: 0; }

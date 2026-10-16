@@ -33,6 +33,15 @@ remote control of the helped person's computer.
 Extras for dev work: chat renders in monospace (paste logs and commands), and
 **Ctrl/Cmd+Shift+V** while controlling types the helper's clipboard on the remote machine.
 
+## Session lifetime
+
+Sessions close on their own so nobody leaves one open by accident:
+
+- After 2 hours, whoever started the session gets a "Still in the session?" popup. If they don't press **Continue** within 5 minutes, the session closes for both people. Pressing Continue starts another 2 hours.
+- Leaving, or closing the tab or window, ends the session for both people (remote control stops with it).
+
+Tune with `SESSION_MINUTES` (default 120) and `SESSION_GRACE_MINUTES` (default 5) on the server.
+
 ## Run locally
 
 ```bash

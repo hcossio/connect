@@ -141,7 +141,26 @@
     </footer>
   </section>
 
+  <!-- ===== Session ended ===== -->
+  <section id="ended" class="ended" hidden>
+    <div class="ended-card">
+      <svg class="logo"><use href="#i-logo"/></svg>
+      <h1>Session ended</h1>
+      <p id="endedReason" class="muted"></p>
+      <div class="ended-actions">
+        <a href="/" class="btn primary">Start a new call</a>
+        <button id="rejoinBtn" class="btn" type="button">Rejoin room</button>
+      </div>
+    </div>
+  </section>
+
   <!-- ===== Dialogs ===== -->
+  <dialog id="continueDialog">
+    <h2>Still in the session?</h2>
+    <p>This call has been open for a while. To avoid leaving it open by accident, it will close soon unless you continue.</p>
+    <menu><button id="endSessionBtn" class="btn" type="button">End session</button><button id="continueBtn" class="btn primary" type="button">Continue</button></menu>
+  </dialog>
+
   <dialog id="controlDialog">
     <h2>Allow remote control?</h2>
     <p><b class="peer-name"></b> will be able to move your mouse and type on this computer. You can stop it at any time.</p>

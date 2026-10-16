@@ -22,7 +22,10 @@ const state = {
   controlling: false,      // helper side: we are controlling the peer
   controlPending: false,   // helper side: waiting for an answer
   unread: 0,
+  isHost: false,           // started the session: gets the "still there?" check
+  ended: false,
 };
+const TITLE = document.title;
 
 // ---------- Small UI helpers ----------
 function setStatus(text, kind = 'waiting') {
@@ -131,7 +134,7 @@ function join() {
   state.ws = new WebSocket(`${proto}://${location.host}/ws`);
   state.ws.onopen = () => signal({ type: 'join', room, name: state.myName });
   state.ws.onmessage = (e) => onSignal(JSON.parse(e.data));
-  state.ws.onclose = () => setStatus('Disconnected from server', 'failed');
+  state.ws.onclose = () => { if (!state.ended) endSession('lost'); };
 }
 
 function signal(msg) { state.ws?.readyState === 1 && state.ws.send(JSON.stringify(msg)); }
@@ -184,6 +187,7 @@ async function onSignal(msg) {
       break;
     case 'joined':
       state.polite = !msg.initiator;
+      state.isHost = !!msg.host;
       if (msg.initiator) { state.peerPresent = true; setStatus('Connecting', 'connecting'); createPeer(); updateStage(); }
       break;
     case 'peer-joined':
@@ -194,10 +198,14 @@ async function onSignal(msg) {
       if (!state.pc) createPeer();
       updateStage();
       break;
-    case 'peer-left':
-      toast(`${state.peerName} left`);
-      setStatus('Waiting for the other person');
-      resetPeer();
+    case 'session-check':
+      // Sent only to whoever started the session. No countdown on purpose:
+      // if nobody answers, the server closes the session a few minutes later.
+      document.title = `Still there? · ${TITLE}`;
+      $('continueDialog').showModal();
+      break;
+    case 'session-ended':
+      endSession(msg.reason, msg.by);
       break;
     case 'sdp': {
       if (!state.pc) createPeer();
@@ -312,13 +320,48 @@ function stopShare() {
 }
 
 // ---------- Leave / invite ----------
-$('leaveBtn').onclick = () => {
+$('leaveBtn').onclick = () => { teardown(); location.href = '/'; };
+
+// ---------- Session lifetime ----------
+$('continueBtn').onclick = () => {
+  signal({ type: 'session-continue' });
+  $('continueDialog').close();
+  document.title = TITLE;
+  toast('Session continued');
+};
+$('endSessionBtn').onclick = () => { $('continueDialog').close(); teardown(); location.href = '/'; };
+// Escape shouldn't silently dismiss the check; make them pick.
+$('continueDialog').addEventListener('cancel', (e) => e.preventDefault());
+$('rejoinBtn').onclick = () => location.reload();
+// Closing the tab or window ends the session (the server tells the other person).
+addEventListener('pagehide', () => { if (!state.ended) teardown(); });
+
+function teardown() {
+  if (state.ended) return;
+  state.ended = true;
+  clearInterval(helperPoll);
+  for (const d of $$('dialog[open]')) d.close();
   stopShare();
+  revokeControl(false);
+  state.agent?.close();
   state.ws?.close();
   resetPeer();
   state.camStream.getTracks().forEach((t) => t.stop());
-  location.href = '/';
+  document.title = TITLE;
+}
+
+const END_REASONS = {
+  timeout: () => 'It closed automatically because nobody chose to continue it.',
+  left: (by) => `${by || state.peerName} left or closed their window.`,
+  lost: () => 'The connection to the server was lost.',
 };
+function endSession(reason, by) {
+  teardown();
+  $('endedReason').textContent = (END_REASONS[reason] || END_REASONS.left)(by);
+  $('rejoinBtn').hidden = reason === 'timeout';
+  $('call').hidden = true;
+  $('ended').hidden = false;
+}
 async function copyInvite() {
   try { await navigator.clipboard.writeText(location.href); toast('Invite link copied'); }
   catch { toast(location.href, 8000); }

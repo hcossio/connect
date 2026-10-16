@@ -17,7 +17,7 @@ remote control of the helped person's computer.
 
 | Piece | What it does | Why |
 |---|---|---|
-| `server/` | Express + `ws`. Serves the web app and relays WebRTC offers, answers and ICE between the two peers in a room. | Media is peer-to-peer, so the server is tiny and cheap to host. |
+| `server/` | Express + `ws`. Serves the web app and relays WebRTC offers, answers and ICE between the people in a room (up to 6; everyone connects directly to everyone else). | Media is peer-to-peer, so the server is tiny and cheap to host. |
 | `web/` | Plain HTML/JS, no build step. Camera, mic, screen share (`getDisplayMedia`), chat, and a data channel that carries control events. | Anyone joins with a link, nothing to install for the helper. |
 | `helper/` | DevAssist Helper, a small Tauri app the helped person downloads and double-clicks (no installer). Listens only on `127.0.0.1`, accepts only the DevAssist site's origin, shows a window while running and injects input with enigo. | Browsers cannot move the mouse or type into other apps, so a small local app is unavoidable for remote control. |
 | `agent/` | Node version of the helper for development. Requires a pairing code. | Handy when hacking on the protocol without rebuilding the app. |
@@ -25,7 +25,7 @@ remote control of the helped person's computer.
 ### Remote control flow
 
 1. The person being helped shares their **entire screen**.
-2. The helper clicks **Request control**. If DevAssist Helper isn't running, the other person gets a download button for their OS; the page keeps checking and continues as soon as the app is open.
+2. The helper clicks **Request control**. In a group call this asks the person whose screen is on the stage (when several people share, tap a camera in the strip to switch screens). If DevAssist Helper isn't running, the other person gets a download button for their OS; the page keeps checking and continues as soon as the app is open.
 3. The other person sees an Allow / Deny dialog. The helper window turns red while they are being controlled.
 4. While allowed, the helper's clicks, scroll and keys on the shared-screen video are sent over the WebRTC data channel, forwarded by the helped browser to the local agent, and injected.
 5. Either side can stop: the helper with **Release control**, the helped person with **Revoke control**, stopping the share, or **Stop and quit** in the helper window.
@@ -37,14 +37,14 @@ Extras for dev work: chat renders in monospace (paste logs and commands), and
 
 Sessions close on their own so nobody leaves one open by accident:
 
-- After 2 hours, whoever started the session gets a "Still in the session?" popup. If they don't press **Continue** within 5 minutes, the session closes for both people. Pressing Continue starts another 2 hours.
-- Leaving, or closing the tab or window, ends the session for both people (remote control stops with it).
+- After 2 hours, whoever started the session gets a "Still in the session?" popup. If they don't press **Continue** within 5 minutes, the session closes for everyone. Pressing Continue starts another 2 hours. If the person who started it leaves, the next person in the call gets the popup instead.
+- Leaving, or closing the tab or window, takes you out of the call and stops any remote control involving you. The others carry on, but when only one person would be left the session ends for them too, so a 1:1 call still ends as soon as either person leaves.
 
-Tune with `SESSION_MINUTES` (default 120) and `SESSION_GRACE_MINUTES` (default 5) on the server.
+Tune with `SESSION_MINUTES` (default 120) and `SESSION_GRACE_MINUTES` (default 5) on the server. `MAX_PEERS` (default 6) caps how many people can be in a room.
 
 ## Camera tiles
 
-Your camera, and the other person's camera during a screen share, float over the stage and can be dragged anywhere (mouse or touch). The pop-out button on a camera opens a small always-on-top window with both cameras and a mic button, so you can keep seeing each other while working in another app. It uses Document Picture-in-Picture in Chrome and Edge, and falls back to the browser's video picture-in-picture in Safari.
+With nobody sharing, everyone else's cameras fill the stage as a grid. Your camera, and the strip of everyone's cameras during a screen share, float over the stage and can be dragged anywhere (mouse or touch). The pop-out button on a camera opens a small always-on-top window with both cameras and a mic button, so you can keep seeing each other while working in another app. It uses Document Picture-in-Picture in Chrome and Edge, and falls back to the browser's video picture-in-picture in Safari.
 
 ## Noise filter
 
@@ -92,7 +92,7 @@ needs X11 (Wayland blocks synthetic input).
 
 ## Known limits of this MVP
 
-- 1:1 rooms only (two people). Group calls would need an SFU such as LiveKit or mediasoup.
+- Small groups only (6 by default). Everyone sends their video to everyone else, which works well up to about 4 to 6 people; bigger calls would need an SFU such as LiveKit or mediasoup.
 - Control maps onto the primary display; sharing a single window or a second monitor will misplace clicks.
 - Helper builds are unsigned (see above).
 - No accounts or recording. Rooms are open to anyone who has the link.

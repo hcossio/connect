@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>DevAssist Helper</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; padding: 20px; font: 14px/1.4 system-ui, sans-serif; background: #111418; color: #e6e9ee; user-select: none; }
+    h1 { font-size: 16px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #8b95a3; }
+    [data-state="connected"] .dot { background: #22c55e; }
+    [data-state="controlled"] .dot { background: #ef4444; animation: pulse 1s infinite; }
+    [data-state="error"] .dot { background: #f59e0b; }
+    @keyframes pulse { 50% { opacity: .3; } }
+    p { color: #b6bec9; min-height: 40px; margin: 0 0 16px; }
+    button { width: 100%; padding: 10px; border: 0; border-radius: 8px; background: #ef4444; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  </style>
+</head>
+<body data-state="waiting">
+  <h1><span class="dot"></span><span id="title">DevAssist Helper</span></h1>
+  <p id="detail">Starting…</p>
+  <button id="stop">Stop and quit</button>
+  <script>
+    const titles = { waiting: 'Waiting', connected: 'Connected', controlled: 'Being controlled', error: 'Problem' };
+    const { listen } = window.__TAURI__.event;
+    const { invoke } = window.__TAURI__.core;
+    function show(payload) {
+      if (!payload) return;
+      document.body.dataset.state = payload.state;
+      document.getElementById('title').textContent = titles[payload.state] || 'DevAssist Helper';
+      document.getElementById('detail').textContent = payload.detail;
+    }
+    listen('status', ({ payload }) => show(payload));
+    invoke('get_status').then(show);
+    document.getElementById('stop').onclick = () => invoke('stop');
+  </script>
+</body>
+</html>

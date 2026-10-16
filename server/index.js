@@ -14,6 +14,39 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 // Any /r/<room> path loads the app; the client reads the room from the URL.
 app.get('/r/:room', (_req, res) => res.sendFile(path.join(__dirname, '..', 'web', 'index.html')));
 
+// Helper app downloads. Builds are attached to GitHub releases by
+// .github/workflows/helper.yml. For a private repo, set GITHUB_TOKEN (read-only,
+// contents:read) and the server hands out short-lived signed links instead.
+const HELPER_REPO = process.env.HELPER_REPO || 'hcossio/connect';
+const HELPER_ASSETS = {
+  windows: 'DevAssist-Helper-windows.exe',
+  mac: 'DevAssist-Helper-mac.dmg',
+  linux: 'DevAssist-Helper-linux.AppImage',
+};
+app.get('/download/:os', async (req, res) => {
+  const name = HELPER_ASSETS[req.params.os];
+  if (!name) return res.status(404).send('Unknown platform');
+  const override = process.env[`HELPER_URL_${req.params.os.toUpperCase()}`];
+  if (override) return res.redirect(override);
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) return res.redirect(`https://github.com/${HELPER_REPO}/releases/latest/download/${name}`);
+  try {
+    const gh = { Authorization: `Bearer ${token}`, 'User-Agent': 'devassist' };
+    const rel = await fetch(`https://api.github.com/repos/${HELPER_REPO}/releases/latest`, { headers: gh });
+    if (!rel.ok) throw new Error(`release lookup ${rel.status}`);
+    const asset = (await rel.json()).assets.find((a) => a.name === name);
+    if (!asset) throw new Error(`asset ${name} missing`);
+    // GitHub answers with a redirect to a signed, short-lived download URL.
+    const dl = await fetch(asset.url, { headers: { ...gh, Accept: 'application/octet-stream' }, redirect: 'manual' });
+    const location = dl.headers.get('location');
+    if (!location) throw new Error(`asset download ${dl.status}`);
+    res.redirect(location);
+  } catch (err) {
+    console.error('helper download failed:', err.message);
+    res.status(502).send('The helper download is not available yet.');
+  }
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 

@@ -12,21 +12,23 @@ remote control of the helped person's computer.
         └────────── signaling (WebSocket) ── server/ ── signaling ─────────────────┘
                                                                                    │ ws://127.0.0.1:47800
                                                                                    ▼
-                                                                         agent/ (injects mouse + keyboard)
+                                                              DevAssist Helper app (helper/) injects mouse + keyboard
 ```
 
 | Piece | What it does | Why |
 |---|---|---|
 | `server/` | Express + `ws`. Serves the web app and relays WebRTC offers, answers and ICE between the two peers in a room. | Media is peer-to-peer, so the server is tiny and cheap to host. |
 | `web/` | Plain HTML/JS, no build step. Camera, mic, screen share (`getDisplayMedia`), chat, and a data channel that carries control events. | Anyone joins with a link, nothing to install for the helper. |
-| `agent/` | Node process on the helped computer. Listens only on `127.0.0.1`, requires a pairing code, injects input with nut.js. | Browsers cannot move the mouse or type into other apps, so a small local helper is unavoidable for remote control. |
+| `helper/` | DevAssist Helper, a small Tauri app the helped person downloads and double-clicks (no installer). Listens only on `127.0.0.1`, accepts only the DevAssist site's origin, shows a window while running and injects input with enigo. | Browsers cannot move the mouse or type into other apps, so a small local app is unavoidable for remote control. |
+| `agent/` | Node version of the helper for development. Requires a pairing code. | Handy when hacking on the protocol without rebuilding the app. |
 
 ### Remote control flow
 
-1. The person being helped shares their **entire screen** and runs the agent (`npm run agent`), then clicks **Connect agent** and pastes the pairing code it prints.
-2. The helper clicks **Request control**; the other person sees an Allow / Deny dialog.
-3. While allowed, the helper's clicks, scroll and keys on the shared-screen video are sent over the WebRTC data channel, forwarded by the helped browser to the local agent, and injected.
-4. Either side can stop: the helper with **Release control**, the helped person with **Revoke control**, stopping the share, or Ctrl+C on the agent.
+1. The person being helped shares their **entire screen**.
+2. The helper clicks **Request control**. If DevAssist Helper isn't running, the other person gets a download button for their OS; the page keeps checking and continues as soon as the app is open.
+3. The other person sees an Allow / Deny dialog. The helper window turns red while they are being controlled.
+4. While allowed, the helper's clicks, scroll and keys on the shared-screen video are sent over the WebRTC data channel, forwarded by the helped browser to the local agent, and injected.
+5. Either side can stop: the helper with **Release control**, the helped person with **Revoke control**, stopping the share, or **Stop and quit** in the helper window.
 
 Extras for dev work: chat renders in monospace (paste logs and commands), and
 **Ctrl/Cmd+Shift+V** while controlling types the helper's clipboard on the remote machine.
@@ -44,7 +46,24 @@ across the internet, serve it over HTTPS (camera and screen APIs require a
 secure origin) and add a TURN server to `ICE_SERVERS` in `web/app.js`
 (coturn, or a hosted one) or calls behind strict NATs will fail.
 
-Agent options: `AGENT_PORT`, `AGENT_TOKEN` (fixed pairing code) and
+### Helper app
+
+```bash
+cd helper && npm ci && npx tauri dev     # run locally
+```
+
+Builds for Windows (portable .exe), Mac (universal .dmg) and Linux (AppImage)
+come from `.github/workflows/helper.yml`. Push a tag like `helper-v0.1.0` to
+publish them as a GitHub release; the server's `/download/<os>` route points
+there. While the repo is private, set `GITHUB_TOKEN` on the server (a
+fine-grained token with read access to this repo's contents) so downloads work.
+Allowed web origins are baked in at build time (`DEVASSIST_ORIGINS`, defaults
+to the Railway URL and localhost:3000).
+
+The builds are unsigned, so Windows SmartScreen and macOS Gatekeeper warn on
+first open (Mac: right-click, Open). Code signing removes that for real users.
+
+Dev agent options: `AGENT_PORT`, `AGENT_TOKEN` (fixed pairing code) and
 `AGENT_ORIGINS` (comma-separated list of DevAssist URLs allowed to connect,
 recommended in production).
 
@@ -56,12 +75,12 @@ needs X11 (Wayland blocks synthetic input).
 
 - 1:1 rooms only (two people). Group calls would need an SFU such as LiveKit or mediasoup.
 - Control maps onto the primary display; sharing a single window or a second monitor will misplace clicks.
-- The agent is a Node script. Packaging it as a one-click Tauri or Electron app is the next step so non-developers can run it.
+- Helper builds are unsigned (see above).
 - No accounts or recording. Rooms are open to anyone who has the link.
 
 ## Roadmap
 
-1. Package the agent (Tauri) with a tray icon and an always-visible "being controlled" indicator.
+1. Code-sign the helper for Windows and Mac.
 2. TURN server and HTTPS deploy.
 3. Multi-monitor selection and window-relative control.
 4. Optional: file transfer over the data channel, session recording, auth.

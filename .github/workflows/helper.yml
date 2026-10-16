@@ -1,0 +1,88 @@
+name: Helper app
+
+on:
+  pull_request:
+    paths: ["helper/**", ".github/workflows/helper.yml"]
+  push:
+    tags: ["helper-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: macos-latest
+            platform: mac
+          - os: ubuntu-22.04
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: helper
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'mac' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: helper/src-tauri
+
+      - name: Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev libxtst-dev
+
+      - run: npm ci
+
+      # Windows ships the bare .exe: it runs without installing (WebView2 is built into Windows 10/11).
+      - name: Build (Windows)
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          npx tauri build --no-bundle
+          mkdir -p dist && cp src-tauri/target/release/devassist-helper.exe dist/DevAssist-Helper-windows.exe
+
+      - name: Build (Mac, universal)
+        if: matrix.platform == 'mac'
+        run: |
+          npx tauri build --target universal-apple-darwin --bundles dmg
+          mkdir -p dist && cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg dist/DevAssist-Helper-mac.dmg
+
+      - name: Build (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          npx tauri build --bundles appimage
+          mkdir -p dist && cp src-tauri/target/release/bundle/appimage/*.AppImage dist/DevAssist-Helper-linux.AppImage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DevAssist-Helper-${{ matrix.platform }}
+          path: helper/dist/*
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/helper-v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

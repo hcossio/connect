@@ -43,7 +43,7 @@
       <button id="shareBtn">Share screen</button>
       <button id="requestControlBtn" disabled>Request control</button>
       <button id="releaseControlBtn" hidden>Release control</button>
-      <button id="agentBtn" title="Connect the local DevAssist agent so a helper can control this computer">Connect agent</button>
+      <button id="agentBtn" class="danger" hidden>Revoke control</button>
       <button id="leaveBtn" class="danger">Leave</button>
     </footer>
   </section>
@@ -52,6 +52,14 @@
     <p><strong id="requesterName"></strong> wants to control your computer.</p>
     <p class="muted">They will be able to move your mouse and type. You can revoke at any time.</p>
     <menu><button id="denyBtn">Deny</button><button id="allowBtn" class="primary">Allow</button></menu>
+  </dialog>
+
+  <dialog id="helperDialog">
+    <p><strong id="helperRequester"></strong> wants to control your computer.</p>
+    <p>To allow it, download and open <strong>DevAssist Helper</strong>. It runs without installing and stops when you close it.</p>
+    <p><a id="downloadHelper" class="button primary" href="#" download>Download</a></p>
+    <p class="muted">Waiting for the helper to start… Your browser may ask to allow access to apps on this device; choose Allow.</p>
+    <menu><a href="#" id="pairingCodeLink" class="muted">Use a pairing code</a><span style="flex:1"></span><button id="cancelHelperBtn">Cancel</button></menu>
   </dialog>
 
   <script src="/app.js"></script>

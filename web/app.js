@@ -169,7 +169,10 @@ function onData(m) {
     case 'control-request': onControlRequest(); break;
     case 'control-granted': startControl(); break;
     case 'control-denied': addMessage('System', `${state.peerName} declined the control request.`); break;
-    case 'control-revoked': stopControl(); addMessage('System', 'Control was revoked.'); break;
+    case 'control-revoked':
+      if (state.controlGranted) { revokeControl(false); addMessage('System', `${state.peerName} released control.`); }
+      else { stopControl(); addMessage('System', 'Control was revoked.'); }
+      break;
     case 'input': forwardToAgent(m.e); break;
   }
 }
@@ -231,44 +234,90 @@ function addMessage(who, text) {
 }
 
 // ---------- Remote control: helped side ----------
-$('agentBtn').onclick = connectAgent;
+// The DevAssist Helper app (or the dev agent) listens on 127.0.0.1. We try to
+// reach it when control is requested; if it isn't running we offer the download
+// and keep retrying until it starts.
+const OS = /Windows/i.test(navigator.userAgent) ? 'windows' : /Mac/i.test(navigator.userAgent) ? 'mac' : 'linux';
+const OS_LABEL = { windows: 'Windows', mac: 'Mac', linux: 'Linux' }[OS];
+let connecting = null;
+let helperPoll = null;
 
-function connectAgent() {
-  const token = prompt('Paste the pairing code shown by the DevAssist agent:');
-  if (!token) return;
-  const ws = new WebSocket(`${AGENT_URL}/?token=${encodeURIComponent(token.trim())}`);
-  ws.onopen = () => { state.agent = ws; $('agentBtn').textContent = 'Agent connected'; $('agentBtn').classList.add('on'); };
-  ws.onclose = () => { state.agent = null; revokeControl(); $('agentBtn').textContent = 'Connect agent'; $('agentBtn').classList.remove('on'); };
-  ws.onerror = () => alert('Could not reach the agent. Is it running (npm run agent) and is the code right?');
+function connectAgent(token) {
+  if (state.agent) return Promise.resolve(true);
+  if (connecting) return connecting;
+  connecting = new Promise((resolve) => {
+    let ws;
+    try { ws = new WebSocket(token ? `${AGENT_URL}/?token=${encodeURIComponent(token)}` : AGENT_URL); }
+    catch { return resolve(false); }
+    ws.onopen = () => {
+      state.agent = ws;
+      ws.onclose = () => { state.agent = null; revokeControl(); };
+      resolve(true);
+    };
+    ws.onerror = () => resolve(false);
+  }).finally(() => { connecting = null; });
+  return connecting;
 }
 
-function onControlRequest() {
-  if (!state.screenStream) { send({ t: 'control-denied' }); return addMessage('System', `${state.peerName} asked for control. Share your entire screen first.`); }
-  if (!state.agent) { send({ t: 'control-denied' }); return addMessage('System', `${state.peerName} asked for control. Start the agent and click "Connect agent" first.`); }
+function agentSend(obj) {
+  if (state.agent?.readyState === 1) state.agent.send(JSON.stringify(obj));
+}
+
+async function onControlRequest() {
+  if (!state.screenStream) {
+    send({ t: 'control-denied' });
+    return addMessage('System', `${state.peerName} asked for control. Share your entire screen first.`);
+  }
+  if (await connectAgent()) return showAllowDialog();
+  $('helperRequester').textContent = state.peerName;
+  $('downloadHelper').href = `/download/${OS}`;
+  $('downloadHelper').textContent = `Download for ${OS_LABEL}`;
+  $('helperDialog').showModal();
+  helperPoll = setInterval(async () => {
+    if (await connectAgent()) { closeHelperDialog(); showAllowDialog(); }
+  }, 2000);
+}
+
+function closeHelperDialog() {
+  clearInterval(helperPoll);
+  helperPoll = null;
+  $('helperDialog').close();
+}
+$('cancelHelperBtn').onclick = () => { closeHelperDialog(); send({ t: 'control-denied' }); };
+$('pairingCodeLink').onclick = async (e) => {
+  e.preventDefault();
+  const token = prompt('Pairing code shown by the DevAssist dev agent:');
+  if (token && await connectAgent(token.trim())) { closeHelperDialog(); showAllowDialog(); }
+};
+
+function showAllowDialog() {
   $('requesterName').textContent = state.peerName;
   $('controlDialog').showModal();
 }
 $('allowBtn').onclick = () => {
   $('controlDialog').close();
+  if (!state.agent) { send({ t: 'control-denied' }); return addMessage('System', 'The helper app closed. Ask again to retry.'); }
   state.controlGranted = true;
+  agentSend({ type: 'control', on: true });
   send({ t: 'control-granted' });
-  $('agentBtn').textContent = 'Revoke control';
-  $('agentBtn').onclick = revokeControl;
+  $('agentBtn').hidden = false;
   addMessage('System', `${state.peerName} is now controlling your computer.`);
 };
 $('denyBtn').onclick = () => { $('controlDialog').close(); send({ t: 'control-denied' }); };
+$('agentBtn').onclick = () => revokeControl();
 
-function revokeControl() {
+// notifyPeer=false when the helper side already ended control itself.
+function revokeControl(notifyPeer = true) {
   if (!state.controlGranted) return;
   state.controlGranted = false;
-  send({ t: 'control-revoked' });
-  $('agentBtn').onclick = connectAgent;
-  $('agentBtn').textContent = state.agent ? 'Agent connected' : 'Connect agent';
+  agentSend({ type: 'control', on: false });
+  if (notifyPeer) send({ t: 'control-revoked' });
+  $('agentBtn').hidden = true;
 }
 
 function forwardToAgent(e) {
-  if (!state.controlGranted || !state.agent || state.agent.readyState !== 1) return;
-  state.agent.send(JSON.stringify(e));
+  if (!state.controlGranted) return;
+  agentSend(e);
 }
 
 // ---------- Remote control: helper side ----------

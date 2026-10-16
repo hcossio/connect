@@ -33,7 +33,10 @@ button.on { outline: 2px solid var(--accent); }
 #chatInput { width: 100%; }
 
 dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; }
-dialog menu { display: flex; gap: 8px; justify-content: flex-end; padding: 0; }
+a.button { display: inline-block; text-decoration: none; color: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+a.button.primary { background: var(--accent); border-color: var(--accent); }
+dialog { max-width: 420px; }
+dialog menu { align-items: center; display: flex; gap: 8px; justify-content: flex-end; padding: 0; }
 
 @media (max-width: 800px) {
   #call main { grid-template-columns: 1fr; grid-template-rows: 1fr 200px; }

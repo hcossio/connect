@@ -165,12 +165,33 @@ textarea { resize: none; }
 }
 .tile.self video { transform: scaleX(-1); }
 
-/* Remote camera: full stage in a 1:1 call, picture-in-picture during screen share. */
-.stage[data-mode="cam"] .tile.remote { inset: 0; border-radius: 0; }
-.stage[data-mode="cam"] .tile.remote video { object-fit: contain; background: #05070a; }
-.stage[data-mode="screen"] .tile.remote {
-  top: 12px; right: 12px; width: 200px; aspect-ratio: 16 / 10; border-radius: 10px;
+/* Everyone else's cameras: a grid filling the stage (one person fills it all),
+   and a floating strip while someone shares their screen. */
+.grid {
+  position: absolute; inset: 0; display: grid; gap: 8px; padding: 8px; align-content: center; justify-content: center;
+  grid-template-columns: repeat(var(--cols, 1), var(--tile-w, 1fr)); grid-auto-rows: var(--tile-h, 1fr);
+}
+.grid .tile { position: relative; border-radius: 10px; min-height: 0; }
+.grid[data-count="1"] { padding: 0; gap: 0; grid-template-columns: 100%; grid-auto-rows: 100%; }
+.grid[data-count="1"] .tile { border-radius: 0; }
+.grid[data-count="1"] video { object-fit: contain; background: #05070a; }
+.grid .tile.focused { outline: 2px solid var(--accent); outline-offset: -2px; }
+.share-tag {
+  position: absolute; left: 8px; top: 8px; padding: 2px 8px; border-radius: 6px;
+  background: var(--accent); color: #fff; font-size: 11px; font-weight: 600;
+}
+.stage[data-mode="screen"] .grid {
+  inset: auto; top: 12px; right: 12px; width: 200px; max-height: calc(100% - 24px);
+  display: flex; flex-direction: column; gap: 8px; padding: 0; overflow-y: auto; z-index: 2;
+}
+.stage[data-mode="screen"] .grid .tile {
+  flex: none; aspect-ratio: 16 / 10; border-radius: 10px; cursor: pointer;
   box-shadow: 0 6px 24px rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.08);
+}
+.stage[data-mode="screen"] .grid video { object-fit: cover; }
+.screen-chip {
+  position: absolute; left: 12px; bottom: 12px; z-index: 2; padding: 4px 10px; border-radius: 8px;
+  background: rgba(0,0,0,.6); font-size: 13px; pointer-events: none;
 }
 .tile.self {
   right: 12px; bottom: 12px; width: 200px; aspect-ratio: 16 / 10; border-radius: 10px;
@@ -178,7 +199,8 @@ textarea { resize: none; }
 }
 .stage[data-mode="empty"] .tile.self { width: 240px; }
 /* Floating tiles can be dragged anywhere on the stage. */
-.tile.self, .stage[data-mode="screen"] .tile.remote { cursor: grab; touch-action: none; user-select: none; }
+.tile.self, .stage[data-mode="screen"] .grid { cursor: grab; touch-action: none; user-select: none; }
+.stage[data-mode="screen"] .grid.dragging { cursor: grabbing; }
 .tile.dragging { cursor: grabbing; opacity: .9; }
 .tile-btn {
   position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; display: grid; place-items: center;
@@ -187,13 +209,14 @@ textarea { resize: none; }
 }
 .tile:hover .tile-btn, .tile-btn:focus-visible { opacity: 1; }
 @media (hover: none) { .tile-btn { opacity: 1; } }
-.stage[data-mode="cam"] .tile.remote .tile-btn { top: 12px; right: 12px; }
+.grid[data-count="1"] .tile-btn { top: 12px; right: 12px; }
 /* While the cameras are popped out, don't show them twice. */
-.stage.popped .tile.self, .stage.popped[data-mode="screen"] .tile.remote { display: none; }
+.stage.popped .tile.self, .stage.popped[data-mode="screen"] .grid { display: none; }
 
 /* ---------- Pop-out camera window (Document Picture-in-Picture) ---------- */
 .pip { position: fixed; inset: 0; background: #05070a; overflow: hidden; }
-.pip-remote { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pip-peers { position: absolute; inset: 0; display: grid; grid-auto-rows: 1fr; gap: 2px; }
+.pip-peers video { width: 100%; height: 100%; min-height: 0; object-fit: cover; display: block; }
 .pip-wait { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; }
 .pip-self {
   position: absolute; right: 8px; bottom: 8px; width: 30%; aspect-ratio: 16 / 10; border-radius: 8px; overflow: hidden;
@@ -313,7 +336,11 @@ dialog textarea { font: 14px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monos
   .stage { border-radius: 12px; }
 
   .tile.self, .stage[data-mode="empty"] .tile.self { width: 96px; aspect-ratio: 3 / 4; right: 8px; bottom: 8px; border-radius: 8px; }
-  .stage[data-mode="screen"] .tile.remote { width: 96px; aspect-ratio: 3 / 4; top: 8px; right: 8px; border-radius: 8px; }
+  .stage[data-mode="screen"] .grid { width: 96px; top: 8px; right: 8px; gap: 6px; }
+  .stage[data-mode="screen"] .grid .tile { aspect-ratio: 3 / 4; border-radius: 8px; }
+  .stage[data-mode="screen"] .grid .tile-btn { display: none; }
+  .share-tag { left: 4px; top: 4px; font-size: 10px; padding: 1px 6px; }
+  .screen-chip { left: 8px; bottom: 8px; font-size: 12px; }
   .stage[data-mode="screen"] .banner, .banner { top: 8px; font-size: 13px; }
   .stage[data-mode="screen"] .banner { left: 8px; right: 112px; transform: none; max-width: none; }
   .banner .btn .label { display: none; }
@@ -325,7 +352,7 @@ dialog textarea { font: 14px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monos
   .toasts { bottom: 12px; max-width: calc(100% - 120px); left: 12px; transform: none; justify-items: start; }
   .toast { font-size: 13px; padding: 7px 12px; }
   /* Fill the phone screen with the other person's camera. */
-  .stage[data-mode="cam"] .tile.remote video { object-fit: cover; }
+  .grid[data-count="1"] video { object-fit: cover; }
 
   /* Chat becomes a full-screen sheet. */
   .chat { inset: 0; top: 0; right: 0; bottom: 0; width: 100%; border-radius: 0; border: 0; padding-bottom: var(--safe-b); }

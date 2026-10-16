@@ -1,12 +1,14 @@
 // Signaling server: serves the web app and relays WebRTC offers/answers/ICE
-// between the (max 2) peers in a room. Media never touches this server.
+// between the people in a room. Every pair connects directly (a mesh), so
+// media never touches this server.
 const path = require('path');
 const http = require('http');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
-const MAX_PEERS = 2; // support sessions are 1:1 (helper + person being helped)
+// Each person sends their camera to everyone else, so small groups only.
+const MAX_PEERS = Number(process.env.MAX_PEERS || 6);
 
 const app = express();
 app.use(express.static(path.join(__dirname, '..', 'web')));
@@ -53,16 +55,18 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 // Sessions end on their own so nobody leaves one open by accident: after
 // SESSION_MINUTES the person who started it is asked to continue, and if they
-// don't answer within GRACE_MINUTES the session closes for everyone. A session
-// also ends as soon as either person leaves or closes their window.
+// don't answer within GRACE_MINUTES the session closes for everyone. When
+// someone leaves or closes their window the others carry on and anyone can
+// rejoin with the same link; the room goes away once the last person leaves.
 const SESSION_MS = Number(process.env.SESSION_MINUTES || 120) * 60_000;
 const GRACE_MS = Number(process.env.SESSION_GRACE_MINUTES || 5) * 60_000;
 
 /**
- * @typedef {{ peers: Set<import('ws')>, host: import('ws'), checkTimer?: NodeJS.Timeout, graceTimer?: NodeJS.Timeout }} Room
+ * @typedef {{ peers: Set<import('ws')>, host: import('ws'), checking: boolean, checkTimer?: NodeJS.Timeout, graceTimer?: NodeJS.Timeout }} Room
  * @type {Map<string, Room>}
  */
 const rooms = new Map();
+let nextId = 1;
 
 function send(ws, msg) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
@@ -71,7 +75,9 @@ function send(ws, msg) {
 function scheduleCheck(room) {
   clearTimeout(room.checkTimer);
   clearTimeout(room.graceTimer);
+  room.checking = false;
   room.checkTimer = setTimeout(() => {
+    room.checking = true;
     send(room.host, { type: 'session-check' });
     room.graceTimer = setTimeout(() => endSession(room, 'timeout'), GRACE_MS);
   }, SESSION_MS);
@@ -103,18 +109,19 @@ wss.on('connection', (ws) => {
       const name = String(msg.room || '').slice(0, 64);
       if (!name || room) return;
       let r = rooms.get(name);
-      if (r && r.peers.size >= MAX_PEERS) return send(ws, { type: 'full' });
+      if (r && r.peers.size >= MAX_PEERS) return send(ws, { type: 'full', max: MAX_PEERS });
       ws.displayName = String(msg.name || 'Guest').slice(0, 40);
+      ws.peerId = nextId++;
       if (!r) {
-        r = { peers: new Set(), host: ws };
+        r = { peers: new Set(), host: ws, checking: false };
         rooms.set(name, r);
         scheduleCheck(r);
       }
       room = r;
+      const others = [...r.peers].map((p) => ({ id: p.peerId, name: p.displayName }));
       r.peers.add(ws);
-      // The second peer to arrive is told to make the offer.
-      send(ws, { type: 'joined', initiator: r.peers.size === 2, host: r.host === ws });
-      for (const p of r.peers) if (p !== ws) send(p, { type: 'peer-joined', name: ws.displayName });
+      send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, peers: others });
+      for (const p of r.peers) if (p !== ws) send(p, { type: 'peer-joined', id: ws.peerId, name: ws.displayName });
       return;
     }
 
@@ -125,13 +132,21 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // Everything else (offer/answer/ice) is relayed to the other peer.
-    for (const p of room.peers) if (p !== ws) send(p, msg);
+    // Everything else (offer/answer/ice) goes to the one person it names.
+    for (const p of room.peers) if (p.peerId === msg.to) send(p, { ...msg, from: ws.peerId });
   });
 
-  // Leaving or closing the window ends the session for both people.
   ws.on('close', () => {
-    if (room && room.peers.has(ws)) endSession(room, 'left', ws);
+    if (!room || !room.peers.has(ws)) return;
+    room.peers.delete(ws);
+    if (!room.peers.size) return endSession(room, 'left', ws);
+    for (const p of room.peers) send(p, { type: 'peer-left', id: ws.peerId, name: ws.displayName });
+    // Someone still has to be asked whether to continue: pass it on.
+    if (room.host === ws) {
+      room.host = room.peers.values().next().value;
+      send(room.host, { type: 'host' });
+      if (room.checking) send(room.host, { type: 'session-check' });
+    }
   });
 });
 

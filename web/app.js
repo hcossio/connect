@@ -1,7 +1,8 @@
-// DevAssist web client: 1:1 WebRTC call with camera, mic, screen share, chat
-// and remote control. Control events travel over a WebRTC data channel; the
-// person being helped forwards them to DevAssist Helper on 127.0.0.1, which
-// is the only piece that can move the mouse and type (browsers can't).
+// DevAssist web client: small-group WebRTC call (everyone connects directly
+// to everyone else) with cameras, mic, screen share, chat and remote control.
+// Control events travel over a WebRTC data channel; the person being helped
+// forwards them to DevAssist Helper on 127.0.0.1, which is the only piece
+// that can move the mouse and type (browsers can't).
 'use strict';
 
 const $ = (id) => document.getElementById(id);
@@ -12,19 +13,28 @@ const CAN_SHARE = !!navigator.mediaDevices?.getDisplayMedia;
 const isWide = () => matchMedia('(min-width: 1025px)').matches;
 
 const state = {
-  ws: null, pc: null, dc: null,
-  polite: false, makingOffer: false, ignoreOffer: false,
+  ws: null, myId: null,
   camStream: new MediaStream(), screenStream: null,
-  remoteScreenStreamId: null,
-  peerName: 'Guest', myName: 'Guest', peerPresent: false,
-  agent: null,             // WebSocket to DevAssist Helper (helped side)
-  controlGranted: false,   // helped side: we allow the peer to control us
-  controlling: false,      // helper side: we are controlling the peer
-  controlPending: false,   // helper side: waiting for an answer
+  myName: 'Guest',
+  focusId: null,            // whose shared screen we want on the stage
+  shownId: null,            // whose shared screen is on the stage now
+  agent: null,              // WebSocket to DevAssist Helper (helped side)
+  controlGrantedTo: null,   // helped side: the person allowed to control us
+  controlRequestFrom: null, // helped side: the person whose request we're answering
+  controlling: null,        // helper side: the person we are controlling
+  controlPending: null,     // helper side: the person we asked, waiting for an answer
   unread: 0,
-  isHost: false,           // started the session: gets the "still there?" check
+  isHost: false,            // started the session: gets the "still there?" check
   ended: false,
 };
+/**
+ * Everyone else in the call, by the id the server gave them.
+ * @type {Map<number, { id: number, name: string, pc: RTCPeerConnection, dc: RTCDataChannel,
+ *   polite: boolean, makingOffer: boolean, ignoreOffer: boolean, waitForOffer: boolean, streams: Map<string, MediaStream>,
+ *   cam: MediaStream|null, screen: MediaStream|null, screenStreamId: string|null, sharedAt: number,
+ *   tile: HTMLElement }>}
+ */
+const peers = new Map();
 const TITLE = document.title;
 
 // ---------- Small UI helpers ----------
@@ -32,10 +42,9 @@ function setStatus(text, kind = 'waiting') {
   $('status').textContent = text;
   $('statusPill').dataset.state = kind;
 }
-function setPeerName(name) {
-  state.peerName = name || 'Guest';
-  $('peerTag').textContent = state.peerName;
-  for (const el of $$('.peer-name')) el.textContent = state.peerName;
+const nameOf = (id) => peers.get(id)?.name || 'Someone';
+function fillName(el, name) {
+  for (const b of el.querySelectorAll('.peer-name')) b.textContent = name;
 }
 function toast(text, ms = 4000) {
   const el = document.createElement('div');
@@ -46,12 +55,69 @@ function toast(text, ms = 4000) {
   while (box.children.length > 2) box.firstChild.remove(); // keep the stage readable
   setTimeout(() => el.remove(), ms);
 }
+function updateStatus() {
+  if (state.ended) return;
+  const list = [...peers.values()];
+  const live = list.filter((p) => p.pc.connectionState === 'connected');
+  if (!list.length) setStatus('Waiting for others to join');
+  else if (live.length === 1 && list.length === 1) setStatus(`Connected with ${live[0].name}`, 'connected');
+  else if (live.length) setStatus(`${live.length + 1} people in the call`, 'connected');
+  else if (list.every((p) => p.pc.connectionState === 'failed')) setStatus('Connection failed', 'failed');
+  else setStatus('Connecting', 'connecting');
+}
+// The stage shows one shared screen at a time (the newest, or the one you
+// picked) with everyone's cameras in a strip; otherwise a grid of cameras.
 function updateStage() {
-  const screen = !$('remoteScreen').hidden;
-  $('stage').dataset.mode = screen ? 'screen' : state.peerPresent ? 'cam' : 'empty';
-  $('emptyState').hidden = state.peerPresent;
-  $('remoteTile').hidden = !state.peerPresent;
+  const sharers = [...peers.values()].filter((p) => p.screen).sort((a, b) => a.sharedAt - b.sharedAt);
+  // Keep the wanted screen while its video is still on the way.
+  if (!peers.get(state.focusId)?.screenStreamId) state.focusId = sharers.at(-1)?.id ?? null;
+  const wanted = peers.get(state.focusId);
+  const focus = wanted?.screen ? wanted : sharers.at(-1) || null;
+  state.shownId = focus?.id ?? null;
+  const screen = $('remoteScreen');
+  if (focus) {
+    if (screen.srcObject !== focus.screen) screen.srcObject = focus.screen;
+    screen.hidden = false;
+  } else {
+    screen.hidden = true;
+    screen.srcObject = null;
+  }
+  $('stage').dataset.mode = focus ? 'screen' : peers.size ? 'cam' : 'empty';
+  $('emptyState').hidden = peers.size > 0;
+  $('grid').hidden = peers.size === 0;
+  $('grid').dataset.count = peers.size;
+  for (const p of peers.values()) {
+    p.tile.classList.toggle('focused', p === focus && sharers.length > 1);
+    p.tile.querySelector('.share-tag').hidden = !p.screen || sharers.length < 2; // the chip already says whose
+    p.tile.title = p.screen && p !== focus ? `Show ${p.name}'s screen` : '';
+  }
+  $('screenChip').hidden = !focus;
+  if (focus) $('screenChip').textContent = sharers.length > 1 ? `${focus.name}'s screen · tap a camera to switch` : `${focus.name}'s screen`;
+  // Control follows the screen on the stage.
+  if (state.controlling && state.controlling !== state.shownId) {
+    sendTo(state.controlling, { t: 'control-revoked' });
+    stopControl();
+  }
+  updateControlBtn();
+  layoutGrid();
   placeTiles();
+}
+// Pick the column count that gives the biggest tiles: 16:9 on landscape
+// screens, 3:4 on portrait phones.
+function layoutGrid() {
+  const g = $('grid'), n = peers.size;
+  if (!n || $('stage').dataset.mode === 'screen') return;
+  const GAP = 8, W = g.clientWidth - 2 * GAP, H = g.clientHeight - 2 * GAP;
+  const ratio = W >= H ? 16 / 9 : 3 / 4;
+  let best = { cols: 1, w: 0 };
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols);
+    const w = Math.min((W - GAP * (cols - 1)) / cols, ((H - GAP * (rows - 1)) / rows) * ratio);
+    if (w > best.w) best = { cols, w };
+  }
+  g.style.setProperty('--cols', best.cols);
+  g.style.setProperty('--tile-w', `${Math.floor(best.w)}px`);
+  g.style.setProperty('--tile-h', `${Math.floor(best.w / ratio)}px`);
 }
 function initials(name) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
@@ -150,10 +216,11 @@ function stopNoise() {
 }
 
 // ---------- Movable camera tiles ----------
-// Floating tiles (your camera, and theirs during a screen share) can be
-// dragged around the stage. Positions are kept as fractions of the free
-// space so they stay put when the window or the chat panel resizes.
-const TILES = [$('selfTile'), $('remoteTile')];
+// Floating tiles (your camera, and the strip of everyone's cameras during a
+// screen share) can be dragged around the stage. Positions are kept as
+// fractions of the free space so they stay put when the window or the chat
+// panel resizes.
+const TILES = [$('selfTile'), $('grid')];
 const tilePos = new Map();
 const isFloating = (tile) => !tile.hidden && (tile.id === 'selfTile' || $('stage').dataset.mode === 'screen');
 function placeTile(tile) {
@@ -175,15 +242,21 @@ for (const tile of TILES) {
     const start = tile.getBoundingClientRect();
     const grabX = e.clientX - start.left, grabY = e.clientY - start.top;
     const maxX = stage.width - start.width, maxY = stage.height - start.height;
+    // A tap (no movement) on a camera in the strip still counts as a click.
+    const tapped = e.target.closest('.tile.peer');
+    let moved = false;
     tile.setPointerCapture(e.pointerId);
     tile.classList.add('dragging');
     const move = (ev) => {
+      if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return;
+      moved = true;
       const x = Math.min(Math.max(ev.clientX - stage.left - grabX, 0), maxX);
       const y = Math.min(Math.max(ev.clientY - stage.top - grabY, 0), maxY);
       tilePos.set(tile, { x: maxX > 0 ? x / maxX : 0, y: maxY > 0 ? y / maxY : 0 });
       placeTile(tile);
     };
-    const end = () => {
+    const end = (ev) => {
+      if (!moved && ev.type === 'pointerup' && tapped) tapped.click();
       tile.classList.remove('dragging');
       tile.removeEventListener('pointermove', move);
       tile.removeEventListener('pointerup', end);
@@ -194,20 +267,21 @@ for (const tile of TILES) {
     tile.addEventListener('pointercancel', end);
   });
 }
-new ResizeObserver(placeTiles).observe($('stage'));
+new ResizeObserver(() => { layoutGrid(); placeTiles(); }).observe($('stage'));
 
 // ---------- Pop-out cameras ----------
-// Chrome and Edge open a small always-on-top window with both cameras and a
-// mic button (Document Picture-in-Picture), so you can keep seeing each other
+// Chrome and Edge open a small always-on-top window with everyone's cameras
+// and a mic button (Document Picture-in-Picture), so you can keep seeing each other
 // while working in another app. Safari falls back to the browser's video
 // picture-in-picture for the camera you clicked.
 const CAN_DOC_PIP = 'documentPictureInPicture' in window;
 const CAN_VIDEO_PIP = !!document.pictureInPictureEnabled;
 let pip = null, pipTimer = null;
-for (const b of $$('.pop-btn')) {
+function setupPopButton(b) {
   b.hidden = !(CAN_DOC_PIP || CAN_VIDEO_PIP);
   b.onclick = (e) => popOut(e.currentTarget.closest('.tile').querySelector('video'));
 }
+$$('.pop-btn').forEach(setupPopButton);
 async function popOut(video) {
   if (pip) return pip.close();
   if (!CAN_DOC_PIP) {
@@ -225,8 +299,8 @@ async function popOut(video) {
   d.body.append($('sprite').cloneNode(true));
   d.body.insertAdjacentHTML('beforeend', `
     <div class="pip">
-      <video class="pip-remote" autoplay playsinline muted></video>
-      <div class="pip-wait">Waiting for the other person</div>
+      <div class="pip-peers"></div>
+      <div class="pip-wait">Waiting for others to join</div>
       <span class="name-tag"></span>
       <div class="pip-self"><video autoplay playsinline muted></video><div class="avatar" hidden></div></div>
       <button class="ctrl" type="button"><svg class="icon"><use href="#i-mic"/></svg><svg class="icon slash"><use href="#i-slash"/></svg></button>
@@ -245,12 +319,29 @@ async function popOut(video) {
 function syncPip() {
   if (!pip) return;
   const d = pip.document;
-  const remote = state.peerPresent ? $('remoteCam').srcObject : null;
-  const rv = d.querySelector('.pip-remote'), sv = d.querySelector('.pip-self video');
-  if (rv.srcObject !== remote) rv.srcObject = remote; // muted: the call's audio keeps playing in the tab
+  const list = [...peers.values()].filter((p) => p.cam);
+  const box = d.querySelector('.pip-peers');
+  const key = list.map((p) => p.id).join();
+  if (box.dataset.key !== key) {
+    box.dataset.key = key;
+    box.style.gridTemplateColumns = `repeat(${list.length > 1 ? 2 : 1}, 1fr)`;
+    box.replaceChildren(...list.map((p) => {
+      const v = d.createElement('video');
+      v.autoplay = v.playsInline = v.muted = true; // muted: the call's audio keeps playing in the tab
+      v.dataset.id = p.id;
+      return v;
+    }));
+  }
+  for (const v of box.children) {
+    const cam = peers.get(Number(v.dataset.id))?.cam || null;
+    if (v.srcObject !== cam) v.srcObject = cam;
+  }
+  const sv = d.querySelector('.pip-self video');
   if (sv.srcObject !== state.camStream) sv.srcObject = state.camStream;
-  d.querySelector('.pip-wait').hidden = !!remote;
-  d.querySelector('.name-tag').textContent = state.peerPresent ? state.peerName : 'You';
+  d.querySelector('.pip-wait').hidden = list.length > 0;
+  const tag = d.querySelector('.name-tag');
+  tag.hidden = list.length > 1;
+  tag.textContent = list.length ? list[0].name : 'You';
   const a = state.camStream.getAudioTracks()[0], v = state.camStream.getVideoTracks()[0];
   const mic = d.querySelector('.ctrl');
   mic.disabled = !a;
@@ -322,7 +413,7 @@ function join() {
   $('chatBtn').classList.toggle('active', isWide());
   $('lobby').hidden = true;
   $('call').hidden = false;
-  setStatus('Waiting for the other person');
+  updateStatus();
   updateStage();
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -334,64 +425,114 @@ function join() {
 
 function signal(msg) { state.ws?.readyState === 1 && state.ws.send(JSON.stringify(msg)); }
 
-// ---------- Peer connection (perfect negotiation) ----------
-const remoteStreams = new Map();
-
-function createPeer() {
+// ---------- Peer connections (one per person, perfect negotiation) ----------
+// Whoever joins makes the first offer to each person already there; those
+// people wait for it instead of offering at the same time. (Two first offers
+// crossing would be resolved by the polite/impolite rule below, but Chrome
+// can drop the ICE candidates of the offer it rolls back, leaving that pair
+// stuck.) Later renegotiation, like starting a screen share, can come from
+// either side.
+function addPeer(id, name, initiator) {
+  if (peers.has(id)) return peers.get(id);
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-  state.pc = pc;
+  const tile = $('peerTileTpl').content.firstElementChild.cloneNode(true);
+  const p = {
+    id, name, pc, dc: null, polite: state.myId > id, makingOffer: false, ignoreOffer: false, waitForOffer: !initiator,
+    streams: new Map(), cam: null, screen: null, screenStreamId: null, sharedAt: 0, tile,
+  };
+  peers.set(id, p);
+  tile.querySelector('.name-tag').textContent = name;
+  setupPopButton(tile.querySelector('.pop-btn'));
+  tile.addEventListener('click', (e) => {
+    if (e.target.closest('button') || !p.screen) return;
+    state.focusId = id;
+    updateStage();
+  });
+  $('grid').append(tile);
+
   for (const t of state.camStream.getTracks()) pc.addTrack(t, state.camStream);
   if (state.screenStream) for (const t of state.screenStream.getTracks()) pc.addTrack(t, state.screenStream);
 
   // Pre-negotiated channel so both sides have it without waiting.
-  state.dc = pc.createDataChannel('app', { negotiated: true, id: 0 });
-  state.dc.onopen = () => {
-    $('controlBtn').disabled = false;
-    send({ t: 'hello', name: state.myName });
-    if (state.screenStream) send({ t: 'screen-on', streamId: state.screenStream.id });
+  p.dc = pc.createDataChannel('app', { negotiated: true, id: 0 });
+  p.dc.onopen = () => {
+    if (state.screenStream) sendTo(id, { t: 'screen-on', streamId: state.screenStream.id });
+    updateControlBtn();
   };
-  state.dc.onmessage = (e) => onData(JSON.parse(e.data));
+  p.dc.onmessage = (e) => onData(p, JSON.parse(e.data));
 
-  pc.onicecandidate = ({ candidate }) => candidate && signal({ type: 'ice', candidate });
+  pc.onicecandidate = ({ candidate }) => candidate && signal({ type: 'ice', to: id, candidate });
   pc.onnegotiationneeded = async () => {
+    if (p.waitForOffer) return; // fires again once their offer has been answered, if still needed
     try {
-      state.makingOffer = true;
+      p.makingOffer = true;
       await pc.setLocalDescription();
-      signal({ type: 'sdp', description: pc.localDescription });
-    } finally { state.makingOffer = false; }
+      signal({ type: 'sdp', to: id, description: pc.localDescription });
+    } catch (err) {
+      console.warn(err);
+    } finally { p.makingOffer = false; }
   };
-  pc.ontrack = ({ track, streams }) => {
+  pc.ontrack = ({ streams }) => {
     const stream = streams[0];
-    if (stream) remoteStreams.set(stream.id, stream);
-    const isScreen = stream && stream.id === state.remoteScreenStreamId;
-    if (isScreen) showRemoteScreen(stream);
-    else if ($('remoteCam').srcObject !== stream) $('remoteCam').srcObject = stream;
-    track.onended = () => { if (isScreen) hideRemoteScreen(); };
+    if (!stream) return;
+    p.streams.set(stream.id, stream);
+    stream.onremovetrack = () => {
+      if (!stream.getTracks().length) { p.streams.delete(stream.id); routeStreams(p); }
+    };
+    routeStreams(p);
   };
-  pc.onconnectionstatechange = () => {
-    if (pc.connectionState === 'connected') setStatus(`Connected with ${state.peerName}`, 'connected');
-    if (pc.connectionState === 'failed') setStatus('Connection failed', 'failed');
-  };
+  pc.onconnectionstatechange = updateStatus;
+  return p;
+}
+
+// Each person sends up to two streams: camera+mic, and their screen.
+function routeStreams(p) {
+  p.screen = (p.screenStreamId && p.streams.get(p.screenStreamId)) || null;
+  p.cam = [...p.streams.values()].find((s) => s.id !== p.screenStreamId) || null;
+  const v = p.tile.querySelector('video');
+  if (v.srcObject !== p.cam) v.srcObject = p.cam;
+  updateStage();
+}
+
+function removePeer(id) {
+  const p = peers.get(id);
+  if (!p) return;
+  if (state.controlling === id || state.controlPending === id) stopControl();
+  if (state.controlGrantedTo === id) revokeControl(false);
+  if (state.controlRequestFrom === id) closeControlPrompts();
+  p.pc.close();
+  p.tile.remove();
+  peers.delete(id);
+  updateStage();
+  updateStatus();
 }
 
 async function onSignal(msg) {
   switch (msg.type) {
     case 'full':
       $('emptyTitle').textContent = 'This room is full';
-      setStatus('Room full (2 people max)', 'failed');
+      setStatus(`Room full (${msg.max} people max)`, 'failed');
       break;
     case 'joined':
-      state.polite = !msg.initiator;
+      state.myId = msg.id;
       state.isHost = !!msg.host;
-      if (msg.initiator) { state.peerPresent = true; setStatus('Connecting', 'connecting'); createPeer(); updateStage(); }
+      for (const o of msg.peers) addPeer(o.id, o.name, true);
+      updateStage();
+      updateStatus();
       break;
     case 'peer-joined':
-      setPeerName(msg.name);
-      state.peerPresent = true;
-      setStatus(`${msg.name} joined, connecting`, 'connecting');
+      addPeer(msg.id, msg.name, false);
       toast(`${msg.name} joined`);
-      if (!state.pc) createPeer();
       updateStage();
+      updateStatus();
+      break;
+    case 'peer-left':
+      removePeer(msg.id);
+      toast(`${msg.name} left`);
+      break;
+    case 'host':
+      // Whoever started the session left; the "still there?" check is ours now.
+      state.isHost = true;
       break;
     case 'session-check':
       // Sent only to whoever started the session. No countdown on purpose:
@@ -403,87 +544,67 @@ async function onSignal(msg) {
       endSession(msg.reason, msg.by);
       break;
     case 'sdp': {
-      if (!state.pc) createPeer();
-      const pc = state.pc;
+      const p = peers.get(msg.from);
+      if (!p) return;
       const d = msg.description;
-      const collision = d.type === 'offer' && (state.makingOffer || pc.signalingState !== 'stable');
-      state.ignoreOffer = !state.polite && collision;
-      if (state.ignoreOffer) return;
-      await pc.setRemoteDescription(d);
+      const collision = d.type === 'offer' && (p.makingOffer || p.pc.signalingState !== 'stable');
+      p.ignoreOffer = !p.polite && collision;
+      if (p.ignoreOffer) return;
+      await p.pc.setRemoteDescription(d);
       if (d.type === 'offer') {
-        await pc.setLocalDescription();
-        signal({ type: 'sdp', description: pc.localDescription });
+        await p.pc.setLocalDescription();
+        signal({ type: 'sdp', to: p.id, description: p.pc.localDescription });
+        p.waitForOffer = false;
       }
       break;
     }
-    case 'ice':
-      try { await state.pc?.addIceCandidate(msg.candidate); }
-      catch (e) { if (!state.ignoreOffer) console.warn(e); }
+    case 'ice': {
+      const p = peers.get(msg.from);
+      try { await p?.pc.addIceCandidate(msg.candidate); }
+      catch (e) { if (!p?.ignoreOffer) console.warn(e); }
       break;
+    }
   }
-}
-
-function resetPeer() {
-  remoteStreams.clear();
-  stopControl();
-  revokeControl(false);
-  state.pc?.close();
-  state.pc = null; state.dc = null;
-  state.peerPresent = false;
-  $('remoteCam').srcObject = null;
-  hideRemoteScreen();
-  $('controlBtn').disabled = true;
-  updateStage();
 }
 
 // ---------- Data channel messages ----------
-function send(obj) { state.dc?.readyState === 'open' && state.dc.send(JSON.stringify(obj)); }
+function sendTo(id, obj) {
+  const dc = peers.get(id)?.dc;
+  if (dc?.readyState === 'open') dc.send(JSON.stringify(obj));
+}
+function broadcast(obj) { for (const id of peers.keys()) sendTo(id, obj); }
 
-function onData(m) {
+function onData(p, m) {
   switch (m.t) {
-    case 'hello':
-      setPeerName(m.name);
-      if (state.pc?.connectionState === 'connected') setStatus(`Connected with ${m.name}`, 'connected');
+    case 'chat': addMessage(p.name, m.text, 'theirs'); break;
+    case 'screen-on':
+      // The newest screen takes the stage. Its track may arrive before or
+      // after this message; routeStreams sorts it out either way.
+      p.screenStreamId = m.streamId;
+      p.sharedAt = Date.now();
+      state.focusId = p.id;
+      routeStreams(p);
       break;
-    case 'chat': addMessage(state.peerName, m.text, 'theirs'); break;
-    case 'screen-on': {
-      state.remoteScreenStreamId = m.streamId;
-      // The screen track may have arrived before this message; re-route it.
-      const stream = remoteStreams.get(m.streamId);
-      if (stream) {
-        if ($('remoteCam').srcObject === stream) {
-          $('remoteCam').srcObject = [...remoteStreams.values()].find((s) => s.id !== m.streamId) || null;
-        }
-        showRemoteScreen(stream);
-      }
+    case 'screen-off':
+      if (state.controlling === p.id) stopControl();
+      if (p.screenStreamId) p.streams.delete(p.screenStreamId);
+      p.screenStreamId = null;
+      routeStreams(p);
       break;
-    }
-    case 'screen-off': hideRemoteScreen(); stopControl(); break;
-    case 'control-request': onControlRequest(); break;
-    case 'control-granted': startControl(); break;
+    case 'control-request': onControlRequest(p); break;
+    case 'control-granted': if (state.controlPending === p.id) startControl(p); break;
     case 'control-denied':
-      state.controlPending = false;
+      if (state.controlPending !== p.id) break;
+      state.controlPending = null;
       updateControlBtn();
-      systemMessage(`${state.peerName} didn't allow control.`);
+      systemMessage(m.busy ? `Someone else is already controlling ${p.name}'s computer.` : `${p.name} didn't allow control.`);
       break;
     case 'control-revoked':
-      if (state.controlGranted) { revokeControl(false); systemMessage(`${state.peerName} released control.`); }
-      if (state.controlling) { stopControl(); systemMessage(`${state.peerName} took back control.`); }
+      if (state.controlGrantedTo === p.id) { revokeControl(false); systemMessage(`${p.name} released control.`); }
+      if (state.controlling === p.id) { stopControl(); systemMessage(`${p.name} took back control.`); }
       break;
-    case 'input': forwardToAgent(m.e); break;
+    case 'input': if (state.controlGrantedTo === p.id) agentSend(m.e); break;
   }
-}
-
-function showRemoteScreen(stream) {
-  $('remoteScreen').srcObject = stream;
-  $('remoteScreen').hidden = false;
-  updateStage();
-}
-function hideRemoteScreen() {
-  $('remoteScreen').hidden = true;
-  $('remoteScreen').srcObject = null;
-  state.remoteScreenStreamId = null;
-  updateStage();
 }
 
 // ---------- Screen share ----------
@@ -496,8 +617,8 @@ $('shareBtn').onclick = async () => {
   const [track] = state.screenStream.getVideoTracks();
   track.contentHint = 'detail'; // favour sharp text over smooth motion
   track.onended = stopShare;
-  send({ t: 'screen-on', streamId: state.screenStream.id });
-  state.pc?.addTrack(track, state.screenStream);
+  broadcast({ t: 'screen-on', streamId: state.screenStream.id });
+  for (const p of peers.values()) p.pc.addTrack(track, state.screenStream);
   $('shareBtn').classList.add('active');
   $('shareBtn').querySelector('.label').textContent = 'Stop';
   toast('You are sharing your screen');
@@ -505,17 +626,20 @@ $('shareBtn').onclick = async () => {
 function stopShare() {
   if (!state.screenStream) return;
   const ids = new Set(state.screenStream.getTracks().map((t) => t.id));
-  for (const s of state.pc?.getSenders() || []) if (s.track && ids.has(s.track.id)) state.pc.removeTrack(s);
+  for (const p of peers.values()) {
+    for (const s of p.pc.getSenders()) if (s.track && ids.has(s.track.id)) p.pc.removeTrack(s);
+  }
   state.screenStream.getTracks().forEach((t) => t.stop());
   state.screenStream = null;
-  send({ t: 'screen-off' });
+  broadcast({ t: 'screen-off' });
   revokeControl();
   $('shareBtn').classList.remove('active');
   $('shareBtn').querySelector('.label').textContent = 'Share';
 }
 
 // ---------- Leave / invite ----------
-$('leaveBtn').onclick = () => { teardown(); location.href = '/'; };
+// Leaving keeps the room open for the others; you can rejoin from the next screen.
+$('leaveBtn').onclick = () => endSession('self');
 
 // ---------- Session lifetime ----------
 $('continueBtn').onclick = () => {
@@ -528,7 +652,7 @@ $('endSessionBtn').onclick = () => { $('continueDialog').close(); teardown(); lo
 // Escape shouldn't silently dismiss the check; make them pick.
 $('continueDialog').addEventListener('cancel', (e) => e.preventDefault());
 $('rejoinBtn').onclick = () => location.reload();
-// Closing the tab or window ends the session (the server tells the other person).
+// Closing the tab or window takes you out of the call (the server tells the others).
 addEventListener('pagehide', () => { if (!state.ended) teardown(); });
 
 function teardown() {
@@ -540,7 +664,7 @@ function teardown() {
   revokeControl(false);
   state.agent?.close();
   state.ws?.close();
-  resetPeer();
+  for (const id of [...peers.keys()]) removePeer(id);
   state.camStream.getTracks().forEach((t) => t.stop());
   stopNoise();
   pip?.close();
@@ -548,12 +672,14 @@ function teardown() {
 }
 
 const END_REASONS = {
+  self: () => 'The others can stay in the call, and you can rejoin with the same link.',
   timeout: () => 'It closed automatically because nobody chose to continue it.',
-  left: (by) => `${by || state.peerName} left or closed their window.`,
+  left: (by) => `${by || 'The other person'} left or closed their window.`,
   lost: () => 'The connection to the server was lost.',
 };
 function endSession(reason, by) {
   teardown();
+  $('endedTitle').textContent = reason === 'self' ? 'You left the call' : 'Session ended';
   $('endedReason').textContent = (END_REASONS[reason] || END_REASONS.left)(by);
   $('rejoinBtn').hidden = reason === 'timeout';
   $('call').hidden = true;
@@ -593,7 +719,7 @@ $('chatForm').onsubmit = (e) => {
   e.preventDefault();
   const text = $('chatInput').value;
   if (!text.trim()) return;
-  send({ t: 'chat', text });
+  broadcast({ t: 'chat', text });
   addMessage('You', text, 'mine');
   $('chatInput').value = '';
   autosize();
@@ -654,16 +780,21 @@ function agentSend(obj) {
   if (state.agent?.readyState === 1) state.agent.send(JSON.stringify(obj));
 }
 
-async function onControlRequest() {
-  if (IS_MOBILE) {
-    send({ t: 'control-denied' });
-    return systemMessage(`${state.peerName} asked for control, but phones and tablets can't be controlled remotely.`);
-  }
-  if (!state.screenStream) {
-    send({ t: 'control-denied' });
-    return systemMessage(`${state.peerName} asked for control. Share your entire screen first, then they can ask again.`);
-  }
-  if (await connectAgent()) return $('controlDialog').showModal();
+async function onControlRequest(p) {
+  const deny = (why, busy = false) => {
+    sendTo(p.id, { t: 'control-denied', busy });
+    if (why) systemMessage(why);
+  };
+  if (IS_MOBILE) return deny(`${p.name} asked for control, but phones and tablets can't be controlled remotely.`);
+  if (!state.screenStream) return deny(`${p.name} asked for control. Share your entire screen first, then they can ask again.`);
+  // One person at a time controls this computer.
+  if (state.controlGrantedTo || state.controlRequestFrom) return deny(null, true);
+  state.controlRequestFrom = p.id;
+  fillName($('controlDialog'), p.name);
+  fillName($('helperDialog'), p.name);
+  const ready = await connectAgent();
+  if (state.controlRequestFrom !== p.id) return; // they left or gave up meanwhile
+  if (ready) return $('controlDialog').showModal();
   $('downloadHelper').href = `/download/${OS}`;
   $('downloadHelper').textContent = `Download DevAssist Helper for ${OS_LABEL}`;
   $('helperDialog').showModal();
@@ -677,8 +808,18 @@ function closeHelperDialog() {
   helperPoll = null;
   $('helperDialog').close();
 }
-$('cancelHelperBtn').onclick = () => { closeHelperDialog(); send({ t: 'control-denied' }); };
-$('helperDialog').addEventListener('cancel', () => { clearInterval(helperPoll); send({ t: 'control-denied' }); });
+// Answer "no" to whoever is waiting on us.
+function denyPending() {
+  if (state.controlRequestFrom) sendTo(state.controlRequestFrom, { t: 'control-denied' });
+  state.controlRequestFrom = null;
+}
+function closeControlPrompts() {
+  closeHelperDialog();
+  $('controlDialog').close();
+  state.controlRequestFrom = null;
+}
+$('cancelHelperBtn').onclick = () => { closeHelperDialog(); denyPending(); };
+$('helperDialog').addEventListener('cancel', () => { clearInterval(helperPoll); denyPending(); });
 $('pairingCodeLink').onclick = async (e) => {
   e.preventDefault();
   const token = prompt('Pairing code shown by the DevAssist dev agent:');
@@ -687,28 +828,32 @@ $('pairingCodeLink').onclick = async (e) => {
 
 $('allowBtn').onclick = () => {
   $('controlDialog').close();
-  if (!state.agent) { send({ t: 'control-denied' }); return systemMessage('DevAssist Helper closed. Ask them to request control again.'); }
-  state.controlGranted = true;
+  const id = state.controlRequestFrom;
+  state.controlRequestFrom = null;
+  if (!peers.has(id)) return;
+  if (!state.agent) {
+    sendTo(id, { t: 'control-denied' });
+    return systemMessage('DevAssist Helper closed. Ask them to request control again.');
+  }
+  state.controlGrantedTo = id;
   agentSend({ type: 'control', on: true });
-  send({ t: 'control-granted' });
+  sendTo(id, { t: 'control-granted' });
+  fillName($('controlledBanner'), nameOf(id));
   $('controlledBanner').hidden = false;
-  addMessage('', `${state.peerName} is controlling your computer.`, 'system');
+  addMessage('', `${nameOf(id)} is controlling your computer.`, 'system');
 };
-$('denyBtn').onclick = () => { $('controlDialog').close(); send({ t: 'control-denied' }); };
-$('controlDialog').addEventListener('cancel', () => send({ t: 'control-denied' }));
+$('denyBtn').onclick = () => { $('controlDialog').close(); denyPending(); };
+$('controlDialog').addEventListener('cancel', denyPending);
 $('revokeBtn').onclick = () => { revokeControl(); systemMessage('You took back control.'); };
 
 // notifyPeer=false when the other side already ended control itself.
 function revokeControl(notifyPeer = true) {
-  if (!state.controlGranted) return;
-  state.controlGranted = false;
+  const id = state.controlGrantedTo;
+  if (!id) return;
+  state.controlGrantedTo = null;
   agentSend({ type: 'control', on: false });
-  if (notifyPeer) send({ t: 'control-revoked' });
+  if (notifyPeer) sendTo(id, { t: 'control-revoked' });
   $('controlledBanner').hidden = true;
-}
-
-function forwardToAgent(e) {
-  if (state.controlGranted) agentSend(e);
 }
 
 // ---------- Remote control: helper side ----------
@@ -717,38 +862,52 @@ const screenEl = $('remoteScreen');
 function updateControlBtn() {
   const btn = $('controlBtn');
   const label = btn.querySelector('.label');
-  btn.classList.toggle('active', state.controlling);
-  if (state.controlling) { label.textContent = 'Release'; btn.title = 'Stop controlling their computer'; }
-  else if (state.controlPending) { label.textContent = 'Asking…'; btn.title = 'Waiting for them to allow control'; }
-  else { label.textContent = 'Control'; btn.title = 'Ask to control their computer'; }
+  const target = peers.get(state.shownId);
+  btn.classList.toggle('active', !!state.controlling);
+  btn.disabled = !state.controlling && ![...peers.values()].some((p) => p.dc?.readyState === 'open');
+  if (state.controlling) {
+    label.textContent = 'Release';
+    btn.title = `Stop controlling ${nameOf(state.controlling)}'s computer`;
+  } else if (state.controlPending) {
+    label.textContent = 'Asking…';
+    btn.title = `Waiting for ${nameOf(state.controlPending)} to allow control`;
+  } else {
+    label.textContent = 'Control';
+    btn.title = target ? `Ask to control ${target.name}'s computer` : 'Ask to control the computer whose screen is shared';
+  }
 }
 
 $('controlBtn').onclick = () => {
   if (state.controlling) {
-    send({ t: 'control-revoked' });
+    sendTo(state.controlling, { t: 'control-revoked' });
     stopControl();
     return;
   }
   if (state.controlPending) return;
-  if (screenEl.hidden) return toast(`Ask ${state.peerName} to share their screen first`);
-  state.controlPending = true;
+  const target = peers.get(state.shownId);
+  if (!target) {
+    const only = peers.size === 1 ? [...peers.values()][0].name : 'someone';
+    return toast(`Ask ${only} to share their screen first`);
+  }
+  state.controlPending = target.id;
   updateControlBtn();
-  send({ t: 'control-request' });
-  toast(`Asking ${state.peerName} for control…`);
+  sendTo(target.id, { t: 'control-request' });
+  toast(`Asking ${target.name} for control…`);
 };
 
-function startControl() {
-  state.controlling = true;
-  state.controlPending = false;
+function startControl(p) {
+  state.controlling = p.id;
+  state.controlPending = null;
   $('toasts').replaceChildren();
   screenEl.classList.add('controlling');
   screenEl.focus({ preventScroll: true });
+  fillName($('controllingBanner'), p.name);
   $('controllingBanner').hidden = false;
   updateControlBtn();
 }
 function stopControl() {
-  state.controlling = false;
-  state.controlPending = false;
+  state.controlling = null;
+  state.controlPending = null;
   screenEl.classList.remove('controlling');
   $('controllingBanner').hidden = true;
   updateControlBtn();
@@ -768,7 +927,7 @@ function normalized(ev) {
   return { x, y };
 }
 
-function input(e) { if (state.controlling) send({ t: 'input', e }); }
+function input(e) { if (state.controlling) sendTo(state.controlling, { t: 'input', e }); }
 
 // Pointer events cover mouse, pen and touch: a tap is a click, a drag is a drag.
 let lastMove = 0;

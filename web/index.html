@@ -70,7 +70,7 @@
     <main class="main">
       <div id="stage" class="stage" data-mode="empty">
         <div id="emptyState" class="empty">
-          <p id="emptyTitle" class="empty-title">Waiting for someone to join</p>
+          <p id="emptyTitle" class="empty-title">Waiting for others to join</p>
           <p class="muted">Send them this link:</p>
           <div class="invite">
             <code id="inviteLink"></code>
@@ -80,11 +80,8 @@
 
         <video id="remoteScreen" autoplay playsinline hidden tabindex="0"></video>
 
-        <div id="remoteTile" class="tile remote" hidden>
-          <video id="remoteCam" autoplay playsinline></video>
-          <span id="peerTag" class="name-tag"></span>
-          <button class="tile-btn pop-btn" type="button" title="Pop out the cameras so they float over other windows" hidden><svg class="icon sm"><use href="#i-popout"/></svg></button>
-        </div>
+        <div id="grid" class="grid" hidden></div>
+        <div id="screenChip" class="screen-chip" hidden></div>
 
         <div id="selfTile" class="tile self">
           <video id="localCam" autoplay playsinline muted></video>
@@ -153,7 +150,7 @@
   <section id="ended" class="ended" hidden>
     <div class="ended-card">
       <svg class="logo"><use href="#i-logo"/></svg>
-      <h1>Session ended</h1>
+      <h1 id="endedTitle">Session ended</h1>
       <p id="endedReason" class="muted"></p>
       <div class="ended-actions">
         <a href="/" class="btn primary">Start a new call</a>
@@ -199,5 +196,13 @@
   </dialog>
 
   <script src="/app.js"></script>
+  <template id="peerTileTpl">
+    <div class="tile peer">
+      <video autoplay playsinline></video>
+      <span class="name-tag"></span>
+      <span class="share-tag" hidden>Sharing</span>
+      <button class="tile-btn pop-btn" type="button" title="Pop out the cameras so they float over other windows" hidden><svg class="icon sm"><use href="#i-popout"/></svg></button>
+    </div>
+  </template>
 </body>
 </html>

@@ -1079,12 +1079,16 @@ function startControl(p) {
   screenEl.focus({ preventScroll: true });
   fillName($('controllingBanner'), p.name);
   $('controllingBanner').hidden = false;
+  if (matchMedia('(pointer: coarse)').matches) {
+    toast('Tap to click, hold to right-click, drag to drag. Two fingers scroll, pinch to zoom.', 7000);
+  }
   updateControlBtn();
 }
 function stopControl() {
   state.controlling = null;
   state.controlPending = null;
   screenEl.classList.remove('controlling');
+  resetZoom();
   $('controllingBanner').hidden = true;
   updateControlBtn();
 }
@@ -1105,21 +1109,22 @@ function normalized(ev) {
 
 function input(e) { if (state.controlling) sendTo(state.controlling, { t: 'input', e }); }
 
-// Pointer events cover mouse, pen and touch: a tap is a click, a drag is a drag.
+// Mouse and pen go straight through. Touch has its own gestures (below).
 let lastMove = 0;
 screenEl.addEventListener('pointermove', (ev) => {
+  if (ev.pointerType === 'touch') return;
   const now = performance.now(); if (now - lastMove < 16) return; lastMove = now; // ~60 Hz
   const p = normalized(ev); if (p) input({ type: 'move', ...p });
 });
 screenEl.addEventListener('pointerdown', (ev) => {
-  if (!state.controlling) return;
+  if (!state.controlling || ev.pointerType === 'touch') return;
   ev.preventDefault();
   screenEl.focus({ preventScroll: true });
   screenEl.setPointerCapture(ev.pointerId);
   const p = normalized(ev); if (p) input({ type: 'down', button: Math.max(ev.button, 0), ...p });
 });
 screenEl.addEventListener('pointerup', (ev) => {
-  if (!state.controlling) return;
+  if (!state.controlling || ev.pointerType === 'touch') return;
   const p = normalized(ev); if (p) input({ type: 'up', button: Math.max(ev.button, 0), ...p });
 });
 screenEl.addEventListener('contextmenu', (ev) => state.controlling && ev.preventDefault());
@@ -1143,6 +1148,120 @@ screenEl.addEventListener('keydown', async (ev) => {
   const text = await navigator.clipboard.readText().catch(() => '');
   if (text) input({ type: 'text', text });
 }, { capture: true });
+
+// ---------- Touch control ----------
+// On a phone or tablet the shared screen works like a trackpad-less remote
+// desktop: tap to click, hold to right-click, drag with one finger to drag,
+// two fingers to scroll, and pinch to zoom in on the screen (zoomed in, two
+// fingers pan). The page itself never zooms or scrolls while you control.
+const touch = { start: null, last: null, dragging: false, held: false, holdTimer: 0, two: null, zoom: { s: 1, x: 0, y: 0 } };
+const HOLD_MS = 550, SLOP = 10;
+function applyZoom() {
+  const { s, x, y } = touch.zoom;
+  const t = s === 1 ? '' : `translate(${x}px, ${y}px) scale(${s})`;
+  screenEl.style.transform = t;
+  $('pointers').style.transform = t;
+}
+function resetZoom() { touch.zoom = { s: 1, x: 0, y: 0 }; applyZoom(); }
+const pt = (t) => ({ clientX: t.clientX, clientY: t.clientY });
+const mid = (a, b) => ({ clientX: (a.clientX + b.clientX) / 2, clientY: (a.clientY + b.clientY) / 2 });
+const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+
+screenEl.addEventListener('touchstart', (ev) => {
+  if (!state.controlling) return;
+  ev.preventDefault(); // no page zoom, scroll or tap delay
+  clearTimeout(touch.holdTimer);
+  if (ev.touches.length === 1) {
+    touch.start = touch.last = pt(ev.touches[0]);
+    touch.dragging = touch.held = false;
+    touch.two = null;
+    const at = normalized(touch.start);
+    if (at) input({ type: 'move', ...at });
+    touch.holdTimer = setTimeout(() => { // hold: right-click where the finger is
+      const p = normalized(touch.last);
+      if (!p || touch.dragging || touch.two) return;
+      touch.held = true;
+      input({ type: 'down', button: 2, ...p });
+      input({ type: 'up', button: 2, ...p });
+      navigator.vibrate?.(15);
+    }, HOLD_MS);
+  } else if (ev.touches.length === 2) {
+    if (touch.dragging) { const p = normalized(touch.last); if (p) input({ type: 'up', button: 0, ...p }); }
+    touch.dragging = false;
+    touch.start = null;
+    const [a, b] = ev.touches;
+    touch.two = { mid: mid(a, b), dist: dist(a, b), scroll: 0 };
+  }
+}, { passive: false });
+
+screenEl.addEventListener('touchmove', (ev) => {
+  if (!state.controlling) return;
+  ev.preventDefault();
+  if (ev.touches.length === 1 && touch.start) {
+    const t = pt(ev.touches[0]);
+    touch.last = t;
+    if (!touch.dragging && !touch.held && dist(t, touch.start) > SLOP) {
+      clearTimeout(touch.holdTimer);
+      touch.dragging = true;
+      const p0 = normalized(touch.start);
+      if (p0) input({ type: 'down', button: 0, ...p0 });
+    }
+    if (touch.dragging) {
+      const now = performance.now(); if (now - lastMove < 16) return; lastMove = now;
+      const p = normalized(t); if (p) input({ type: 'move', ...p });
+    }
+  } else if (ev.touches.length === 2 && touch.two) {
+    const [a, b] = ev.touches;
+    const m = mid(a, b), d = dist(a, b);
+    const z = touch.zoom;
+    const r = screenEl.parentElement.getBoundingClientRect();
+    // Zoom around the fingers' midpoint.
+    const s = Math.min(4, Math.max(1, z.s * (d / touch.two.dist)));
+    const ox = touch.two.mid.clientX - r.left, oy = touch.two.mid.clientY - r.top;
+    let x = ox - ((ox - z.x) * s) / z.s + (m.clientX - touch.two.mid.clientX);
+    let y = oy - ((oy - z.y) * s) / z.s + (m.clientY - touch.two.mid.clientY);
+    if (s === 1 && z.s === 1) {
+      // Not zoomed: two fingers scroll the remote screen.
+      touch.two.scroll += m.clientY - touch.two.mid.clientY;
+      while (Math.abs(touch.two.scroll) > 24) {
+        input({ type: 'wheel', dx: 0, dy: touch.two.scroll > 0 ? -1 : 1 });
+        touch.two.scroll -= Math.sign(touch.two.scroll) * 24;
+      }
+      x = 0; y = 0;
+    }
+    // Keep the screen covering its box.
+    x = Math.min(0, Math.max(r.width - r.width * s, x));
+    y = Math.min(0, Math.max(r.height - r.height * s, y));
+    touch.zoom = { s: s < 1.04 ? 1 : s, x: s < 1.04 ? 0 : x, y: s < 1.04 ? 0 : y };
+    applyZoom();
+    touch.two.mid = m;
+    touch.two.dist = d;
+  }
+}, { passive: false });
+
+screenEl.addEventListener('touchend', (ev) => {
+  if (!state.controlling) return;
+  ev.preventDefault();
+  clearTimeout(touch.holdTimer);
+  if (ev.touches.length) return; // wait for the last finger
+  const p = touch.last && normalized(touch.last);
+  if (touch.start && p && !touch.held) {
+    if (!touch.dragging) input({ type: 'down', button: 0, ...p }); // a tap is a click
+    input({ type: 'up', button: 0, ...p });
+  }
+  touch.start = touch.two = null;
+  touch.dragging = touch.held = false;
+}, { passive: false });
+screenEl.addEventListener('touchcancel', () => {
+  clearTimeout(touch.holdTimer);
+  if (touch.dragging) { const p = normalized(touch.last); if (p) input({ type: 'up', button: 0, ...p }); }
+  touch.start = touch.two = null;
+  touch.dragging = touch.held = false;
+});
+// Safari's own pinch gestures, which touch-action alone doesn't stop.
+for (const type of ['gesturestart', 'gesturechange']) {
+  document.addEventListener(type, (ev) => { if (state.controlling) ev.preventDefault(); }, { passive: false });
+}
 
 // "Type text" sends a whole string, which also works from a phone keyboard.
 $('typeTextBtn').onclick = () => { $('typeInput').value = ''; $('typeDialog').showModal(); $('typeInput').focus(); };

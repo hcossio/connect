@@ -563,7 +563,8 @@ function signal(msg) { state.ws?.readyState === 1 && state.ws.send(JSON.stringif
 function addPeer(id, name, initiator) {
   if (peers.has(id)) return peers.get(id);
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-  const tile = $('peerTileTpl').content.firstElementChild.cloneNode(true);
+  // importNode, not cloneNode: a video cloned out of the inert template document never paints in iOS Safari.
+  const tile = document.importNode($('peerTileTpl').content, true).firstElementChild;
   const p = {
     id, name, pc, dc: null, polite: state.myId > id, makingOffer: false, ignoreOffer: false, waitForOffer: !initiator,
     streams: new Map(), cam: null, screen: null, screenStreamId: null, sharedAt: 0, tile,
@@ -638,9 +639,19 @@ async function sendDiag(p) {
     streams: [...p.streams.values()].map((s) => ({ id: s.id.slice(0, 8), tracks: s.getTracks().map((t) => `${t.kind}:${t.readyState}${t.muted ? ':muted' : ''}${t.enabled ? '' : ':disabled'}`) })),
     video: { src: v.srcObject?.id?.slice(0, 8) || null, w: v.videoWidth, h: v.videoHeight, paused: v.paused, ready: v.readyState, muted: v.muted, blocked: blocked.has(v),
       box: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)], display: getComputedStyle(v).display, vis: getComputedStyle(v).visibility,
-      tile: getComputedStyle(p.tile).display, grid: $('grid').hidden ? 'hidden' : getComputedStyle($('grid')).display },
+      tile: getComputedStyle(p.tile).display, grid: $('grid').hidden ? 'hidden' : getComputedStyle($('grid')).display,
+      shown: v.getVideoPlaybackQuality?.().totalVideoFrames, painted: p.painted || 0, own: v.ownerDocument === document,
+      top: (() => { const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return el && `${el.tagName}#${el.id}.${typeof el.className === 'string' ? el.className.split(' ')[0] : ''}`; })() },
     inbound,
   } });
+}
+
+// Frames the browser actually put on screen, for the diag report.
+function countPainted(p, v) {
+  if (!v.requestVideoFrameCallback || p.counting) return;
+  p.counting = true;
+  const tick = () => { p.painted = (p.painted || 0) + 1; if (peers.has(p.id)) v.requestVideoFrameCallback(tick); };
+  v.requestVideoFrameCallback(tick);
 }
 
 // Each person sends up to two streams: camera+mic, and their screen.
@@ -648,7 +659,7 @@ function routeStreams(p) {
   p.screen = (p.screenStreamId && p.streams.get(p.screenStreamId)) || null;
   p.cam = [...p.streams.values()].find((s) => s.id !== p.screenStreamId) || null;
   const v = p.tile.querySelector('video');
-  if (v.srcObject !== p.cam) { v.srcObject = p.cam; playWhenAllowed(v); }
+  if (v.srcObject !== p.cam) { v.srcObject = p.cam; playWhenAllowed(v); countPainted(p, v); }
   if (!blocked.has(v)) v.muted = state.soundOff; // unmuting a blocked video would pause it again
   updateStage();
 }

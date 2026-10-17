@@ -677,6 +677,7 @@ function teardown() {
   if (state.ended) return;
   state.ended = true;
   clearInterval(helperPoll);
+  clearInterval(pointerHelperPoll);
   for (const d of $$('dialog[open]')) d.close();
   stopShare();
   revokeControl(false);
@@ -809,6 +810,7 @@ async function onControlRequest(p) {
   // One person at a time controls this computer.
   if (state.controlGrantedTo || state.controlRequestFrom) return deny(null, true);
   state.controlRequestFrom = p.id;
+  closePointerHelper(); // the control prompts cover the helper too
   fillName($('controlDialog'), p.name);
   fillName($('helperDialog'), p.name);
   const ready = await connectAgent();
@@ -1076,21 +1078,40 @@ function drawPointer(p) {
     if (state.agent) {
       agentSend({ type: 'pointer', id: p.id, name: p.name, color: colorOf(p.id), x: mine.x, y: mine.y });
       p.pointerSent = true;
-    } else tryHelper();
+    } else tryHelper(p);
   } else if (p.pointerSent) {
     agentSend({ type: 'pointeroff', id: p.id });
     p.pointerSent = false;
   }
 }
 
-async function tryHelper() {
+async function tryHelper(p) {
   if (Date.now() - lastHelperTry < 5000) return;
   lastHelperTry = Date.now();
   if (await connectAgent()) return syncPointers();
   if (helperHinted) return;
   helperHinted = true;
-  systemMessage('Others are pointing at your screen. Open DevAssist Helper to see their pointers on it.');
+  // Offer the download once; a control request's dialog takes precedence.
+  if (!state.screenStream || $$('dialog[open]').length) {
+    return systemMessage('Others are pointing at your screen. Open DevAssist Helper to see their pointers on it.');
+  }
+  fillName($('pointerHelperDialog'), p.name);
+  $('pointerHelperDownload').href = `/download/${OS}`;
+  $('pointerHelperDownload').textContent = `Download DevAssist Helper for ${OS_LABEL}`;
+  $('pointerHelperDialog').showModal();
+  pointerHelperPoll = setInterval(async () => {
+    if (!state.screenStream) return closePointerHelper();
+    if (await connectAgent()) { closePointerHelper(); syncPointers(); }
+  }, 2000);
 }
+let pointerHelperPoll = null;
+function closePointerHelper() {
+  clearInterval(pointerHelperPoll);
+  pointerHelperPoll = null;
+  $('pointerHelperDialog').close();
+}
+$('pointerHelperLater').onclick = closePointerHelper;
+$('pointerHelperDialog').addEventListener('close', () => clearInterval(pointerHelperPoll));
 
 function dropPointer(p) {
   p.pointer = null;

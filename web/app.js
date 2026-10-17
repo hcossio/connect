@@ -438,8 +438,9 @@ function join() {
   $('roomLabel').textContent = room;
   $('inviteLink').textContent = location.href;
   $('shareBtn').hidden = !CAN_SHARE;
-  $('chat').hidden = !isWide();
-  $('chatBtn').classList.toggle('active', isWide());
+  // The chat starts closed; new messages float over the call until you open it.
+  $('chat').hidden = true;
+  $('chatBtn').classList.remove('active');
   $('lobby').hidden = true;
   $('call').hidden = false;
   updateStatus();
@@ -623,7 +624,7 @@ function broadcast(obj) { for (const id of peers.keys()) sendTo(id, obj); }
 
 function onData(p, m) {
   switch (m.t) {
-    case 'chat': addMessage(p.name, m.text, 'theirs'); break;
+    case 'chat': addMessage(p.name, m.text, 'theirs', p.id); break;
     case 'screen-on':
       // The newest screen takes the stage. Its track may arrive before or
       // after this message; routeStreams sorts it out either way.
@@ -653,7 +654,7 @@ function onData(p, m) {
     case 'input': if (state.controlGrantedTo === p.id) agentSend(m.e); break;
     case 'pointer': onPointer(p, m); break;
     case 'transcribe': if (p.id === state.hostId) onTranscribe(p, m); break;
-    case 'line': if (typeof m.text === 'string') addLine(p.name, m.text.slice(0, 2000), Number(m.at) || Date.now(), false); break;
+    case 'line': if (typeof m.text === 'string') addLine(p.name, m.text.slice(0, 2000), Number(m.at) || Date.now(), false, p.id); break;
   }
 }
 
@@ -751,6 +752,7 @@ function setChatOpen(open) {
   $('chat').hidden = !open;
   $('chatBtn').classList.toggle('active', open);
   if (open) {
+    $('chatPops').replaceChildren();
     state.unread = 0;
     $('unread').hidden = true;
     const m = $('messages'); m.scrollTop = m.scrollHeight;
@@ -779,15 +781,37 @@ $('chatForm').onsubmit = (e) => {
   autosize();
 };
 
-function addMessage(who, text, kind) {
+// Messages are bubbles: yours on the right, theirs on the left with their
+// name in their color, each with the time and a copy button. Multi-line text
+// (logs, commands) keeps a monospace font.
+function addMessage(who, text, kind, id) {
   const div = document.createElement('div');
   div.className = `msg ${kind}`;
-  if (kind !== 'system') {
-    const w = document.createElement('span'); w.className = 'who'; w.textContent = who;
-    div.append(w);
-  }
   const body = document.createElement('div'); body.className = 'body'; body.textContent = text;
-  div.append(body);
+  if (kind === 'system') {
+    div.append(body);
+  } else {
+    const prev = $('messages').lastElementChild;
+    const bubble = document.createElement('div'); bubble.className = 'bubble';
+    if (/\n/.test(text.trim())) bubble.classList.add('code');
+    // A run of messages from the same person shows the name only once.
+    const sameRun = prev?.dataset.from === String(id ?? kind) && Date.now() - prev.sentAt < 120_000;
+    if (kind === 'theirs' && !sameRun) {
+      const w = document.createElement('span'); w.className = 'who'; w.textContent = who;
+      if (id) w.style.color = colorOf(id);
+      bubble.append(w);
+    }
+    if (sameRun) div.classList.add('cont');
+    const meta = document.createElement('span'); meta.className = 'meta'; meta.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const copy = document.createElement('button');
+    copy.type = 'button'; copy.className = 'copy'; copy.title = 'Copy message'; copy.setAttribute('aria-label', 'Copy message');
+    copy.innerHTML = '<svg class="icon sm"><use href="#i-copy"/></svg>';
+    copy.onclick = () => copyText(text, copy);
+    bubble.append(body, meta, copy);
+    div.append(bubble);
+    div.dataset.from = String(id ?? kind);
+    div.sentAt = Date.now();
+  }
   const m = $('messages');
   m.append(div);
   m.scrollTop = m.scrollHeight;
@@ -795,8 +819,30 @@ function addMessage(who, text, kind) {
     state.unread += 1;
     $('unread').textContent = state.unread;
     $('unread').hidden = false;
-    toast(`${who}: ${text.length > 60 ? `${text.slice(0, 60)}…` : text}`);
+    popMessage(who, text, id);
   }
+}
+async function copyText(text, btn) {
+  try { await navigator.clipboard.writeText(text); }
+  catch { return toast('Could not copy'); }
+  btn.classList.add('done');
+  btn.innerHTML = '<svg class="icon sm"><use href="#i-check"/></svg>';
+  setTimeout(() => { btn.classList.remove('done'); btn.innerHTML = '<svg class="icon sm"><use href="#i-copy"/></svg>'; }, 1500);
+}
+// With the chat closed, new messages float over the call as bubbles; tap one to open the chat.
+function popMessage(who, text, id) {
+  const box = $('chatPops');
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.className = 'chat-pop';
+  const w = document.createElement('b'); w.textContent = who;
+  if (id) w.style.color = colorOf(id);
+  const t = document.createElement('span'); t.textContent = text.length > 140 ? `${text.slice(0, 140)}…` : text;
+  el.append(w, t);
+  el.onclick = () => setChatOpen(true);
+  box.append(el);
+  while (box.children.length > 3) box.firstChild.remove();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 300); }, 8000);
 }
 function systemMessage(text) {
   addMessage('', text, 'system');
@@ -1212,6 +1258,8 @@ function syncTranscriptUI() {
   $('txToggle').textContent = tx.on ? 'Stop transcript' : 'Start transcript';
   $('txToggle').classList.toggle('primary', !tx.on);
   $('txDot').hidden = !tx.on;
+  $('ccBtn').hidden = !tx.on;
+  $('ccBtn').classList.toggle('active', state.captions);
   $('txDownload').disabled = !tx.lines.length;
   for (const b of $$('.seg button')) b.setAttribute('aria-checked', String(b.dataset.engine === engine));
   $('engCloud').disabled = !tx.cloud;
@@ -1328,7 +1376,7 @@ function transcribeClip(audio, at) {
       const raw = engine === 'cloud' ? await viaCloud(audio) : await viaDevice(audio);
       const text = raw.trim().replace(/\s+/g, ' ');
       if (!tx.on || !/\p{L}/u.test(text) || HALLUCINATIONS.test(text)) return;
-      addLine(state.myName, text, at, true);
+      addLine(state.myName, text, at, true, state.myId);
       broadcast({ t: 'line', text, at });
     } catch (err) {
       txStatus(err.message);
@@ -1389,7 +1437,7 @@ function viaDevice(audio) {
 }
 
 const timeOf = (at) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-function addLine(name, text, at, mine) {
+function addLine(name, text, at, mine, id) {
   const line = { name, text, at, mine };
   // People's clips finish at different speeds; keep the transcript in speaking order.
   let i = tx.lines.length;
@@ -1410,21 +1458,46 @@ function addLine(name, text, at, mine) {
   const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
   box.insertBefore(el, box.querySelectorAll('.line')[i] || null);
   if (stick) box.scrollTop = box.scrollHeight;
-  showCaption(mine ? 'You' : name, text);
+  showCaption(id, mine ? 'You' : name, text);
   syncTranscriptUI();
 }
 
-function showCaption(name, text) {
+// Captions look like a video's closed captions: white text on a dark band at
+// the bottom of the stage, at most two lines, the speaker's name in their
+// color. A speaker's next phrase continues their line; a new speaker takes
+// over. CC in the control bar hides them for you only.
+const cc = { id: null, el: null, timer: 0 };
+function showCaption(id, name, text) {
+  if (!state.captions) return;
   const box = $('captions');
-  const el = document.createElement('div');
-  el.className = 'caption';
-  const b = document.createElement('b');
-  b.textContent = name;
-  el.append(b, text);
-  box.append(el);
-  while (box.children.length > 2) box.firstChild.remove();
-  setTimeout(() => el.remove(), 7000);
+  if (cc.id !== id || !cc.el?.isConnected) {
+    box.replaceChildren();
+    cc.el = document.createElement('p');
+    cc.el.className = 'cc-line';
+    const b = document.createElement('b');
+    b.textContent = name;
+    if (id) b.style.color = colorOf(id);
+    cc.text = document.createElement('span');
+    cc.el.append(b, cc.text);
+    box.append(cc.el);
+    cc.id = id;
+  }
+  cc.text.textContent = `${cc.text.textContent} ${text}`.trim();
+  // Keep only what fits in two lines, dropping whole words from the start.
+  const words = cc.text.textContent.split(' ');
+  while (words.length > 1 && cc.el.getClientRects().length && cc.el.offsetHeight > 2.2 * parseFloat(getComputedStyle(cc.el).lineHeight)) {
+    words.shift();
+    cc.text.textContent = words.join(' ');
+  }
+  clearTimeout(cc.timer);
+  cc.timer = setTimeout(() => { box.replaceChildren(); cc.id = null; }, 6000);
 }
+state.captions = true;
+$('ccBtn').onclick = () => {
+  state.captions = !state.captions;
+  $('ccBtn').classList.toggle('active', state.captions);
+  if (!state.captions) { $('captions').replaceChildren(); cc.id = null; }
+};
 
 $('txDownload').onclick = () => {
   const room = $('roomLabel').textContent;
@@ -1438,7 +1511,3 @@ $('txDownload').onclick = () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 };
 
-// Show the chat panel again when a window grows back to desktop width.
-matchMedia('(min-width: 1025px)').addEventListener('change', (e) => {
-  if (!$('call').hidden && e.matches && $('chat').hidden) setChatOpen(true);
-});

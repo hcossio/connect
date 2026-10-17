@@ -27,6 +27,8 @@
       <symbol id="i-voice" viewBox="0 0 24 24"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></symbol>
       <symbol id="i-popout" viewBox="0 0 24 24"><path d="M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"/><rect width="10" height="7" x="12" y="13" rx="2"/></symbol>
       <symbol id="i-slash" viewBox="0 0 24 24"><path d="m3 3 18 18"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+      <symbol id="i-cc" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="3"/><path d="M10 10.5a2.5 2.5 0 1 0 0 3M17 10.5a2.5 2.5 0 1 0 0 3"/></symbol>
       <symbol id="i-logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="var(--accent)" stroke="none"/><path d="M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z" fill="#fff" stroke="none"/></symbol>
     </defs>
   </svg>
@@ -110,6 +112,7 @@
 
         <div id="captions" class="captions" aria-live="polite"></div>
         <div id="toasts" class="toasts" aria-live="polite"></div>
+        <div id="chatPops" class="chat-pops" aria-live="polite"></div>
       </div>
 
       <aside id="chat" class="chat" hidden>
@@ -174,6 +177,9 @@
       </button>
       <button id="pointersBtn" class="ctrl" type="button" title="Show everyone's mouse pointers on the shared screen" hidden>
         <svg class="icon"><use href="#i-cursors"/></svg><span class="label">Pointers</span><span id="myColor" class="swatch"></span>
+      </button>
+      <button id="ccBtn" class="ctrl active" type="button" title="Show or hide captions" hidden>
+        <svg class="icon"><use href="#i-cc"/></svg><span class="label">Captions</span>
       </button>
       <button id="chatBtn" class="ctrl" type="button" title="Chat">
         <svg class="icon"><use href="#i-chat"/></svg><span class="label">Chat</span><span id="unread" class="badge" hidden></span>

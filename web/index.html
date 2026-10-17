@@ -127,14 +127,15 @@
         </form>
         <div id="transcriptPane" class="transcript" hidden>
           <div class="tx-bar">
-            <button id="txToggle" class="btn sm primary" type="button">Start transcript</button>
+            <button id="txToggle" class="btn sm primary host-only" type="button">Start transcript</button>
+            <span id="txState" class="muted small"></span>
             <span class="spacer"></span>
             <button id="txDownload" class="icon-btn" type="button" title="Download transcript" aria-label="Download transcript" disabled><svg class="icon"><use href="#i-download"/></svg></button>
           </div>
-          <div class="tx-bar">
-            <div class="seg" role="radiogroup" aria-label="Where your voice is transcribed">
+          <div class="tx-bar host-only">
+            <div class="seg" role="radiogroup" aria-label="Where voices are transcribed">
               <button id="engGroq" type="button" role="radio" data-engine="groq">Groq</button>
-              <button id="engDevice" type="button" role="radio" data-engine="device">This device</button>
+              <button id="engDevice" type="button" role="radio" data-engine="device">On device</button>
             </div>
             <select id="txLang" aria-label="Spoken language">
               <option value="">Any language</option>
@@ -142,9 +143,9 @@
               <option value="es">Español</option>
             </select>
           </div>
-          <p id="txNote" class="muted small tx-note"></p>
+          <p id="txNote" class="muted small tx-note host-only"></p>
           <div id="transcriptLines" class="messages">
-            <p class="muted small center">Everyone's words show up here with their name. Each person's voice is transcribed by their own choice above. Transcripts aren't saved; download one to keep it.</p>
+            <p class="muted small center">Everyone's words show up here with their name once the meeting starter turns the transcript on. Transcripts aren't saved; download one to keep it.</p>
           </div>
           <p id="txStatus" class="muted small tx-note" hidden></p>
         </div>

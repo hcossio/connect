@@ -52,14 +52,14 @@ While someone shares their screen, **Pointers** shows where everyone is pointing
 
 ## Transcript
 
-Anyone in the call can start a transcript from the **Transcript** tab next to Chat, and everyone sees that it's on. Each person's own mic is transcribed and shared as text, so every line carries the right name. The lines appear in the tab and as live captions over the stage, and **Download** saves them as a text file. Nothing is stored on the server.
+The person who started the meeting can turn on a transcript from the **Transcript** tab next to Chat and choose how voices are transcribed. Everyone else sees that it's on and reads along, with no settings to deal with. If the meeting starter leaves, the next person in the call gets the controls. Each person's browser transcribes only their own mic and shares the text, so every line carries the right name. Lines appear in the tab and as live captions over the stage, and **Download** saves them as a text file. Nothing is stored on the server.
 
-Each person chooses where their own voice is transcribed:
+The meeting starter's engine choice applies to everyone:
 
-- **Groq**: short clips of your speech (cut at pauses) go through our server to [Groq](https://groq.com)'s hosted Whisper (`whisper-large-v3-turbo`). It's fast and accurate, and needs `GROQ_API_KEY` set on the server (optional `GROQ_MODEL`). The key never reaches the browser, only people currently in a call can use it, and each person is limited to 40 clips a minute.
-- **This device**: Whisper runs in the browser with [Transformers.js](https://github.com/huggingface/transformers.js) (`onnx-community/whisper-base`, on WebGPU where available, otherwise WebAssembly). Audio never leaves the computer. The model downloads from Hugging Face once and is cached; it's slower on older machines and phones.
+- **Groq**: short clips of each person's speech (cut at pauses) go through our server to [Groq](https://groq.com)'s hosted Whisper (`whisper-large-v3-turbo`). It's fast and accurate, and needs `GROQ_API_KEY` set on the server (optional `GROQ_MODEL`). The key never reaches the browser, only people currently in a call can use it, and each person is limited to 40 clips a minute. Without a key, everyone transcribes on device.
+- **On device**: Whisper runs in each browser with [Transformers.js](https://github.com/huggingface/transformers.js) (`onnx-community/whisper-base`, on WebGPU where available, otherwise WebAssembly). Audio never leaves anyone's computer. Each browser downloads the model from Hugging Face once and caches it; it's slower on older machines and phones.
 
-The language picker (any, English, Español) helps both engines when everyone speaks the same language.
+A language setting (any, English, Español) helps both engines when everyone speaks the same language.
 
 ## Noise filter
 

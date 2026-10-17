@@ -67,6 +67,10 @@ Only a signed-in host can start a meeting. Guests join with the host's link or r
 
 `/admin` shows the meetings open right now (room, who's in it, how long it's been running, how much was transcribed), daily usage for the last 30 days, and the last 50 meetings. Meetings with a saved transcript have a **View** link that opens it, with a download button. The **Profile** tab has your display name (filled in for you when you start a call), username, email and password. Transcription cost is estimated at `XAI_PRICE_PER_HOUR` (default $0.10 per hour of audio). Accounts, the meeting log and usage live in `store.json` under `DATA_DIR` (default `./data`). On Railway that is a volume mounted at `/data`, so they survive deploys.
 
+## Remote control recordings
+
+When you control someone's computer while signed in, your browser records what you see of their screen, with both voices, and uploads it to the server every few seconds. The other person sees a **Recorded** badge on their "is controlling your computer" bar and a note in the chat. Recordings appear on the admin page, where you can play, download or delete them. They are stored on the data volume (`DATA_DIR/recordings`). One recording stops at `RECORDING_MAX_MB` (default 1000), and the oldest are deleted once all of them pass `RECORDING_TOTAL_MB` (default 2000). You can turn recording off on the Profile page.
+
 ## Scheduled meetings and the waiting room
 
 On the admin page, **Scheduled meetings** creates a meeting with a title, time and length, and copies its link. Before the host opens it, guests who follow the link see the title and time, and they join on their own once it starts. Each scheduled meeting can have a waiting room (on by default). Guests then knock, and the host, or anyone signed in, lets them in or turns them away from a card at the top of the call. For calls that aren't scheduled, the waiting room is a setting on the Profile page.

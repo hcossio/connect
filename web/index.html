@@ -107,11 +107,13 @@
         <div id="controllingBanner" class="banner" hidden>
           <svg class="icon sm"><use href="#i-pointer"/></svg>
           <span>You're controlling <b class="peer-name"></b>'s computer</span>
+          <span id="recMine" class="rec" title="This session is being recorded" hidden>REC</span>
           <button id="typeTextBtn" class="btn sm" type="button"><svg class="icon sm"><use href="#i-keyboard"/></svg><span class="label">Type text</span></button>
         </div>
         <div id="controlledBanner" class="banner danger" hidden>
           <span class="pulse"></span>
           <span><b class="peer-name"></b> is controlling your computer</span>
+          <span id="recTheirs" class="rec" title="They are recording what they see of your screen" hidden>Recorded</span>
           <button id="revokeBtn" class="btn sm light" type="button">Stop</button>
         </div>
 

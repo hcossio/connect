@@ -564,3 +564,12 @@ button.link:hover { text-decoration: underline; }
   .sched-form { grid-template-columns: 1fr 1fr; }
   .sched-form .field:first-child { grid-column: 1 / -1; }
 }
+
+/* ---------- Recording ---------- */
+.rec { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,.35); color: #fff; }
+.rec::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #ff4d4f; animation: rec-blink 1.4s infinite; }
+.rec[hidden] { display: none; }
+@keyframes rec-blink { 50% { opacity: .25; } }
+.tx-dialog.rec-dialog { grid-template-rows: auto auto; height: auto; width: min(1100px, calc(100% - 32px)); }
+.rec-dialog video { width: 100%; max-height: calc(100vh - 180px); background: #000; display: block; }
+.row-actions { align-items: center; }

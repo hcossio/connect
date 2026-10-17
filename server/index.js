@@ -216,6 +216,78 @@ app.post('/api/admin/meetings/:id/summary', auth.requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Remote control recordings ----------
+// While a signed-in host controls someone's computer, their browser records
+// what they see and uploads it here in pieces. Each recording has its own key,
+// so the last pieces still arrive after the host has left the call. Old
+// recordings are deleted once they take more than RECORDING_TOTAL_MB.
+const REC_DIR = path.join(store.dir, 'recordings');
+fs.mkdirSync(REC_DIR, { recursive: true });
+const REC_MAX = Number(process.env.RECORDING_MAX_MB || 1000) * 1024 * 1024;
+const REC_TOTAL = Number(process.env.RECORDING_TOTAL_MB || 2000) * 1024 * 1024;
+const recFile = (r) => path.join(REC_DIR, `${r.id}.${r.mime.includes('mp4') ? 'mp4' : 'webm'}`);
+const publicRec = ({ key, ...r }) => r;
+function pruneRecordings() {
+  let total = store.data.recordings.reduce((n, r) => n + r.bytes, 0);
+  while (total > REC_TOTAL && store.data.recordings.length > 1) {
+    const old = store.data.recordings.shift();
+    fs.rmSync(recFile(old), { force: true });
+    total -= old.bytes;
+  }
+  store.save();
+}
+app.post('/api/recordings', express.json({ limit: '10kb' }), (req, res) => {
+  const ws = callers.get(req.get('x-token'));
+  if (!ws?.room) return res.status(403).json({ error: 'Not in a call' });
+  if (!ws.user) return res.status(403).json({ error: 'Only signed-in hosts record' });
+  const mime = String(req.body?.mime || 'video/webm');
+  if (!/^video\/(webm|mp4)/.test(mime)) return res.status(400).json({ error: 'Unsupported format' });
+  const r = {
+    id: crypto.randomBytes(8).toString('hex'), key: crypto.randomBytes(16).toString('hex'),
+    meetingId: ws.meeting.id, room: ws.meeting.room, title: ws.meeting.title, by: ws.displayName, of: String(req.body?.of || '').slice(0, 40),
+    mime: mime.split(';')[0], startedAt: Date.now(), bytes: 0,
+  };
+  store.data.recordings.push(r);
+  store.save();
+  res.json({ id: r.id, key: r.key });
+});
+const recFor = (req) => {
+  const r = store.data.recordings.find((x) => x.id === req.params.id);
+  return r && req.get('x-key') && r.key === req.get('x-key') && !r.endedAt ? r : null;
+};
+app.post('/api/recordings/:id/chunk', express.raw({ type: () => true, limit: '50mb' }), (req, res) => {
+  const r = recFor(req);
+  if (!r) return res.status(404).json({ error: 'No such recording' });
+  if (!Buffer.isBuffer(req.body) || !req.body.length) return res.json({ ok: true });
+  if (r.bytes + req.body.length > REC_MAX) { r.capped = true; r.endedAt = Date.now(); store.save(); return res.status(413).json({ error: 'The recording is too long' }); }
+  fs.appendFileSync(recFile(r), req.body);
+  r.bytes += req.body.length;
+  r.lastChunkAt = Date.now();
+  store.save();
+  res.json({ ok: true });
+});
+app.post('/api/recordings/:id/end', (req, res) => {
+  const r = recFor(req);
+  if (!r) return res.status(404).json({ error: 'No such recording' });
+  r.endedAt = Date.now();
+  pruneRecordings();
+  res.json({ ok: true });
+});
+app.get('/api/admin/recordings', auth.requireAdmin, (_req, res) => {
+  res.json(store.data.recordings.filter((r) => r.bytes).slice().reverse().map(publicRec));
+});
+app.get('/api/admin/recordings/:id/file', auth.requireAdmin, (req, res) => {
+  const r = store.data.recordings.find((x) => x.id === req.params.id);
+  if (!r || !fs.existsSync(recFile(r))) return res.status(404).json({ error: 'No such recording' });
+  if (req.query.download) res.attachment(`control-${r.room}-${new Date(r.startedAt).toISOString().slice(0, 16).replace(':', '')}.${path.extname(recFile(r)).slice(1)}`);
+  res.sendFile(recFile(r), { headers: { 'Content-Type': r.mime } });
+});
+app.delete('/api/admin/recordings/:id', auth.requireAdmin, (req, res) => {
+  const i = store.data.recordings.findIndex((x) => x.id === req.params.id);
+  if (i >= 0) { fs.rmSync(recFile(store.data.recordings[i]), { force: true }); store.data.recordings.splice(i, 1); store.save(); }
+  res.json({ ok: true });
+});
+
 // ---------- Scheduled meetings ----------
 // The host schedules a meeting and sends its link. Before it starts, guests
 // see its title and time; it opens when the host joins.

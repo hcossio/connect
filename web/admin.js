@@ -4,6 +4,7 @@
 const $ = (id) => document.getElementById(id);
 
 const fmtDuration = (ms) => {
+  if (ms < 60_000) return `${Math.round(ms / 1000)} s`;
   const m = Math.round(ms / 60_000);
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
 };
@@ -190,11 +191,13 @@ async function loadProfile() {
   $('pfUsername').value = user.username;
   $('pfEmail').value = user.email;
   $('pfWaiting').checked = user.waitingRoom;
+  $('pfRecord').checked = user.recordControl;
 }
 loadProfile();
 refresh();
 loadScheduled();
-setInterval(() => { if (!$('dashboard').hidden) refresh(); }, 10_000);
+loadRecordings();
+setInterval(() => { if (!$('dashboard').hidden) { refresh(); loadRecordings(); } }, 10_000);
 
 function say(el, ok, text) {
   $(el).hidden = false;
@@ -206,7 +209,7 @@ $('profileForm').onsubmit = async (e) => {
   const r = await fetch('/api/profile', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName: $('pfDisplay').value, username: $('pfUsername').value, email: $('pfEmail').value, waitingRoom: $('pfWaiting').checked }),
+    body: JSON.stringify({ displayName: $('pfDisplay').value, username: $('pfUsername').value, email: $('pfEmail').value, waitingRoom: $('pfWaiting').checked, recordControl: $('pfRecord').checked }),
   });
   const out = await r.json().catch(() => ({}));
   say('pfMsg', r.ok, r.ok ? 'Profile saved.' : out.error || 'Could not save it.');
@@ -266,3 +269,31 @@ $('schedForm').onsubmit = async (e) => {
   $('schedTitle').value = '';
   loadScheduled();
 };
+
+// ---------- Recordings ----------
+const fmtSize = (b) => (b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.max(0.1, b / 1e6).toFixed(1)} MB`);
+async function loadRecordings() {
+  const list = await fetch('/api/admin/recordings').then((r) => (r.ok ? r.json() : []));
+  fill('recRows', 'recEmpty', list.map((r) => {
+    const play = Object.assign(document.createElement('button'), { type: 'button', className: 'btn sm', textContent: 'Play' });
+    play.onclick = () => {
+      $('recTitle').textContent = `${r.by} controlling ${r.of || 'a computer'}`;
+      $('recMeta').textContent = `${r.title || r.room} · ${fmtWhen(r.startedAt)} · ${fmtDuration(r.endedAt - r.startedAt)}${r.capped ? ' · stopped at the size limit' : ''}`;
+      $('recVideo').src = `/api/admin/recordings/${r.id}/file`;
+      $('recDl').href = `/api/admin/recordings/${r.id}/file?download=1`;
+      $('recDialog').showModal();
+    };
+    const del = Object.assign(document.createElement('button'), { type: 'button', className: 'link', textContent: 'Delete' });
+    del.onclick = async () => {
+      if (!confirm('Delete this recording?')) return;
+      await fetch(`/api/admin/recordings/${r.id}`, { method: 'DELETE' });
+      loadRecordings();
+    };
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    actions.append(play, del);
+    return [roomCell(r), fmtWhen(r.startedAt), r.endedAt ? fmtDuration(r.endedAt - r.startedAt) : 'Recording…', r.of, fmtSize(r.bytes), actions];
+  }));
+}
+$('recClose').onclick = () => $('recDialog').close();
+$('recDialog').addEventListener('close', () => { $('recVideo').pause(); $('recVideo').removeAttribute('src'); $('recVideo').load(); });

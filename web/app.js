@@ -721,6 +721,11 @@ function onData(p, m) {
       if (state.controlling === p.id) { stopControl(); systemMessage(`${p.name} took back control.`); }
       break;
     case 'input': if (state.controlGrantedTo === p.id) agentSend(m.e); break;
+    case 'recording':
+      if (state.controlGrantedTo !== p.id) break;
+      $('recTheirs').hidden = !m.on;
+      if (m.on) systemMessage(`${p.name} is recording this remote control session.`);
+      break;
     case 'pointer': onPointer(p, m); break;
     case 'transcribe': if (p.id === state.hostId) onTranscribe(p, m); break;
     case 'line': if (typeof m.text === 'string') addLine(p.name, m.text.slice(0, 2000), Number(m.at) || Date.now(), false, p.id); break;
@@ -785,6 +790,7 @@ function teardown() {
     signal({ type: 'save-transcript', lines: tx.lines.map(({ name, text, at }) => ({ name, text, at })) });
   }
   state.ended = true;
+  stopRecording();
   clearInterval(helperPoll);
   clearInterval(pointerHelperPoll);
   for (const d of $$('dialog[open]')) d.close();
@@ -1099,6 +1105,7 @@ function revokeControl(notifyPeer = true) {
   agentSend({ type: 'control', on: false });
   if (notifyPeer) sendTo(id, { t: 'control-revoked' });
   $('controlledBanner').hidden = true;
+  $('recTheirs').hidden = true;
 }
 
 // ---------- Remote control: helper side ----------
@@ -1152,14 +1159,55 @@ function startControl(p) {
     toast('Tap to click, hold to right-click, drag to drag. Two fingers scroll, pinch to zoom.', 7000);
   }
   updateControlBtn();
+  startRecording(p);
 }
 function stopControl() {
+  stopRecording();
   state.controlling = null;
   state.controlPending = null;
   screenEl.classList.remove('controlling');
   resetZoom();
   $('controllingBanner').hidden = true;
   updateControlBtn();
+}
+
+// ---------- Recording remote control ----------
+// When a signed-in host controls someone's computer, what they see (the shared
+// screen and both voices) is recorded and uploaded in pieces as it goes, and
+// the other person is shown that it's recorded. It can be turned off in Profile.
+const rec = { mr: null, ctx: null, id: null, key: null, peer: null, queue: Promise.resolve() };
+const REC_TYPES = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+async function startRecording(p) {
+  if (rec.mr || !state.user || state.user.recordControl === false || !window.MediaRecorder || !p.screen) return;
+  const mime = REC_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
+  if (!mime) return;
+  const r = await fetch('/api/recordings', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Token': tx.token }, body: JSON.stringify({ of: p.name, mime }),
+  }).catch(() => null);
+  if (!r?.ok || state.controlling !== p.id) return;
+  Object.assign(rec, await r.json(), { peer: p.id });
+  // Mix their voice and ours into one track.
+  const ctx = new AudioContext();
+  const dest = ctx.createMediaStreamDestination();
+  for (const t of [...(p.cam?.getAudioTracks() || []), ...state.camStream.getAudioTracks()]) ctx.createMediaStreamSource(new MediaStream([t])).connect(dest);
+  rec.ctx = ctx;
+  const mr = new MediaRecorder(new MediaStream([...p.screen.getVideoTracks(), ...dest.stream.getAudioTracks()]), { mimeType: mime, videoBitsPerSecond: 1_500_000 });
+  const { id, key } = rec;
+  const put = (url, body) => fetch(url, { method: 'POST', headers: { 'X-Key': key }, body, keepalive: !body || body.size < 60_000 });
+  mr.ondataavailable = (e) => { if (e.data.size) rec.queue = rec.queue.then(() => put(`/api/recordings/${id}/chunk`, e.data)).catch(() => {}); };
+  mr.onstop = () => { rec.queue = rec.queue.then(() => put(`/api/recordings/${id}/end`)).catch(() => {}); };
+  mr.start(4000);
+  rec.mr = mr;
+  $('recMine').hidden = false;
+  sendTo(p.id, { t: 'recording', on: true });
+}
+function stopRecording() {
+  if (!rec.mr) return;
+  if (rec.mr.state !== 'inactive') rec.mr.stop();
+  rec.ctx?.close();
+  if (peers.has(rec.peer)) sendTo(rec.peer, { t: 'recording', on: false });
+  Object.assign(rec, { mr: null, ctx: null, peer: null });
+  $('recMine').hidden = true;
 }
 
 // Map a pointer event to 0..1 coordinates of the shared screen, accounting

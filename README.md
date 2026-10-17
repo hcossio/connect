@@ -73,7 +73,13 @@ Chat messages are bubbles with the time and a copy button. The chat starts close
 
 ## Saved transcripts
 
-The meeting starter can press **Save** in the Transcript tab to keep the transcript with the meeting. Saving again replaces it. Saved transcripts are listed on the admin page.
+The meeting starter can press **Save** in the Transcript tab to keep the transcript with the meeting. Saving again replaces it. Saved transcripts are listed on the admin page. Once it has been saved, the host's browser also saves the latest version when they leave.
+
+## Summary and tasks
+
+After a transcript is saved, Grok (xAI chat completions) writes a summary, the decisions made and a list of tasks. A task gets an owner only when the call makes it clear who took it; the rest are marked General. The admin page shows all of this in the meeting's **Summary and tasks** tab, along with an **agent prompt**: the host's tasks plus the General ones, with the context a coding agent needs, ready to copy and paste. Other people's tasks are listed only as context.
+
+The model is `XAI_CHAT_MODEL` if set; otherwise the server tries `grok-4-fast`, then `grok-4`, then `grok-3-mini`, and keeps the first one that answers. A summary is rewritten at most once a minute.
 
 ## Noise filter
 

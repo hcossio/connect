@@ -87,10 +87,24 @@
     <header class="tx-dialog-head">
       <div><h2 id="txTitle">Transcript</h2><p id="txMeta" class="muted small"></p></div>
       <span class="spacer"></span>
-      <button id="txDl" class="btn sm" type="button">Download</button>
       <button id="txClose" class="btn sm" type="button">Close</button>
     </header>
-    <div id="txBody" class="tx-body"></div>
+    <div class="tx-tabs" role="tablist">
+      <button id="tabSummary" type="button" role="tab" aria-selected="true">Summary and tasks</button>
+      <button id="tabLines" type="button" role="tab" aria-selected="false">Transcript</button>
+    </div>
+    <div id="sumPane" class="tx-body">
+      <div class="sum-actions">
+        <button id="sumCopy" class="btn primary sm" type="button">Copy agent prompt</button>
+        <button id="sumRedo" class="btn sm" type="button">Write it again</button>
+        <span id="sumStatus" class="muted small"></span>
+      </div>
+      <div id="sumBody"></div>
+    </div>
+    <div id="txBody" class="tx-body" hidden>
+      <div class="sum-actions"><button id="txDl" class="btn sm" type="button">Download</button></div>
+      <div id="txLines"></div>
+    </div>
   </dialog>
   <script src="/admin.js"></script>
 </body>

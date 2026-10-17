@@ -146,6 +146,8 @@ input:focus, textarea:focus { border-color: #fff; }
 .lobby[data-cam="loading"] .preview-off { display: none; }
 .preview { position: absolute; inset: 0; }
 .preview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block; }
+/* With the camera off the video would be a black frame: show the photo behind it instead. */
+.lobby:not([data-cam="on"]) .preview video { visibility: hidden; }
 /* Keep the words readable over a bright room. */
 .preview:has(#previewOff[hidden])::after { content: ""; position: absolute; inset: 0; background: rgba(0,0,0,.32); }
 .preview-off {
@@ -723,4 +725,14 @@ button.link:hover { color: var(--muted); }
 #settingsBtn.muted::after { content: ""; position: absolute; top: 4px; right: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px #000; }
 @media (max-width: 640px) {
   .settings-menu { left: 50%; bottom: calc(80px + var(--safe-b)); }
+}
+
+/* iPhones can draw a video black when a blurred-glass layer sits over it,
+   so on touch screens the glass is a solid dark tint instead. */
+@media (pointer: coarse) {
+  .dock, .controls, .chip, .pill, .banner, .invite, .join-row, .settings-menu, .lobby .dock {
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .dock, .controls, .chip, .pill { background: rgba(16,16,16,.78); }
+  .invite, .join-row { background: rgba(0,0,0,.55); }
 }

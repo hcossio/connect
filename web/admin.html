@@ -3,27 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0e1116">
-  <title>Admin · DevAssist</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b82f6'/%3E%3Cpath d='M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z' fill='white'/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#000000">
+  <title>Admin · Connect</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000'/%3E%3Cpath d='M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z' fill='white'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body class="admin">
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <symbol id="i-logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="var(--accent)" stroke="none"/><path d="M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z" fill="#fff" stroke="none"/></symbol>
-  </svg>
   <header class="admin-head">
-    <div class="brand"><svg class="logo"><use href="#i-logo"/></svg>DevAssist</div>
+    <span class="wordmark">Connect</span>
     <nav class="admin-nav">
-      <a href="#dashboard" data-view="dashboard">Dashboard</a>
+      <a href="#dashboard" data-view="dashboard">Meetings</a>
       <a href="#profile" data-view="profile">Profile</a>
     </nav>
     <span class="spacer"></span>
     <a class="btn primary sm" href="/">Start a call</a>
-    <button id="signOut" class="btn sm" type="button">Sign out</button>
+    <button id="signOut" class="signout" type="button">Sign out</button>
   </header>
 
   <main id="dashboard" class="admin-main">
+    <h1 class="page-title">Meetings</h1>
     <section class="cards">
       <div class="card"><span class="muted small">Open now</span><b id="kOpen">–</b><span id="kOpenSub" class="muted small"></span></div>
       <div class="card"><span class="muted small">Meetings, last 30 days</span><b id="kMeetings">–</b><span id="kMinutes" class="muted small"></span></div>
@@ -86,8 +84,9 @@
   </main>
 
   <main id="profile" class="admin-main narrow" hidden>
+    <h1 class="page-title">Profile</h1>
     <section class="panel">
-      <h2>Profile</h2>
+      <h2>Account</h2>
       <form id="profileForm" class="pw-form">
         <label class="field"><span>Display name <span class="muted">(your name in calls)</span></span><input id="pfDisplay" maxlength="40" autocomplete="name"></label>
         <label class="field"><span>Username</span><input id="pfUsername" required minlength="3" maxlength="32" autocomplete="username" autocapitalize="off"></label>

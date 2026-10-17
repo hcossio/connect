@@ -62,7 +62,7 @@ function updateStatus() {
   if (state.ended) return;
   const list = [...peers.values()];
   const live = list.filter((p) => p.pc.connectionState === 'connected');
-  if (!list.length) setStatus('Waiting for others to join');
+  if (!list.length) setStatus('Waiting');
   else if (live.length === 1 && list.length === 1) setStatus(`Connected with ${live[0].name}`, 'connected');
   else if (live.length) setStatus(`${live.length + 1} people in the call`, 'connected');
   else if (list.every((p) => p.pc.connectionState === 'failed')) setStatus('Connection failed', 'failed');
@@ -226,7 +226,8 @@ function stopNoise() {
 // panel resizes.
 const TILES = [$('selfTile'), $('grid')];
 const tilePos = new Map();
-const isFloating = (tile) => !tile.hidden && (tile.id === 'selfTile' || $('stage').dataset.mode === 'screen');
+// While you wait alone, your camera fills the stage and doesn't move.
+const isFloating = (tile) => !tile.hidden && $('stage').dataset.mode !== 'empty' && (tile.id === 'selfTile' || $('stage').dataset.mode === 'screen');
 function placeTile(tile) {
   const p = tilePos.get(tile);
   if (!p || !isFloating(tile)) {
@@ -298,7 +299,7 @@ async function popOut(video) {
     return toast('Your browser blocked the pop-out window.');
   }
   const d = pip.document;
-  d.title = 'DevAssist';
+  d.title = 'Connect';
   for (const link of document.querySelectorAll('link[rel="stylesheet"]')) d.head.append(link.cloneNode());
   d.body.append($('sprite').cloneNode(true));
   d.body.insertAdjacentHTML('beforeend', `
@@ -391,7 +392,7 @@ const meReady = fetch('/api/me').then((r) => r.json()).then(({ user }) => {
     if (user.displayName && !$('nameInput').value) $('nameInput').value = user.displayName;
     $('adminLink').hidden = user.role !== 'admin';
   } else if (!urlRoom) {
-    $('lobbyTitle').textContent = 'Join a support call';
+    $('lobbyTitle').textContent = 'Help is one code away.';
     $('lobbySub').textContent = 'Enter the room code your host sent you.';
     $('roomOptional').hidden = true;
     $('roomInput').placeholder = 'Room code';
@@ -519,6 +520,7 @@ function addPeer(id, name, initiator) {
     streams: new Map(), cam: null, screen: null, screenStreamId: null, sharedAt: 0, tile,
   };
   peers.set(id, p);
+  (state.met ||= new Set()).add(name);
   tile.querySelector('.name-tag').textContent = name;
   setupPopButton(tile.querySelector('.pop-btn'));
   tile.addEventListener('click', (e) => {
@@ -615,11 +617,12 @@ async function onSignal(msg) {
       setStatus(`Room full (${msg.max} people max)`, 'failed');
       break;
     case 'joined':
-      $('emptyTitle').textContent = 'Waiting for others to join';
+      $('emptyTitle').textContent = 'Waiting for your guest.';
       $('emptySub').hidden = true;
       $('inviteBox').hidden = false;
       if (msg.title) document.title = `${msg.title} · ${TITLE}`;
       state.myId = msg.id;
+      state.joinedAt ||= Date.now();
       state.isHost = !!msg.host;
       state.hostId = msg.hostId;
       $('myColor').style.setProperty('--c', colorOf(msg.id));
@@ -821,9 +824,20 @@ const END_REASONS = {
   lost: () => 'The connection to the server was lost.',
   denied: () => 'The host didn\'t let you in.',
 };
+// "38 minutes with Maria", for the screen after the call.
+function callStats() {
+  const names = [...(state.met || [])];
+  if (!state.joinedAt || !names.length) return '';
+  const m = Math.round((Date.now() - state.joinedAt) / 60_000);
+  const length = m < 1 ? 'Under a minute' : m < 60 ? `${m} ${m === 1 ? 'minute' : 'minutes'}` : `${Math.floor(m / 60)} h ${m % 60} min`;
+  const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+  return `${length} with ${who}`;
+}
 function endSession(reason, by) {
   teardown();
-  $('endedTitle').textContent = reason === 'self' ? 'You left the call' : reason === 'denied' ? 'You weren\'t let in' : 'Session ended';
+  $('endedTitle').textContent = reason === 'denied' ? 'You weren\'t let in.' : reason === 'self' || reason === 'left' ? 'That’s a wrap.' : 'Call ended.';
+  $('endedStats').textContent = callStats();
+  $('endedStats').hidden = !$('endedStats').textContent;
   $('endedReason').textContent = (END_REASONS[reason] || END_REASONS.left)(by);
   $('rejoinBtn').hidden = reason === 'timeout' || reason === 'denied';
   $('call').hidden = true;

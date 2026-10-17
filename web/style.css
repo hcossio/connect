@@ -503,6 +503,7 @@ dialog textarea { font: 14px/1.4 var(--mono); }
 dialog.ask { text-align: center; width: min(480px, calc(100% - 2 * var(--gutter))); padding: 36px 32px 28px; }
 .ask-icon { display: inline-grid; place-items: center; width: 60px; height: 60px; border-radius: 50%; border: 1px solid #444; margin-bottom: 18px; }
 .ask-icon .icon { width: 26px; height: 26px; }
+.ask-select { width: 100%; height: 50px; margin-top: 6px; padding: 0 20px; border: 1px solid var(--glass-line); border-radius: 999px; background: var(--surface-2); color: var(--text); font: inherit; font-size: 16px; }
 dialog.ask h2 { font-size: 28px; line-height: 1.12; text-wrap: balance; }
 dialog.ask p { color: var(--muted); }
 dialog.ask menu { display: grid; grid-template-columns: 1fr 1fr; margin-top: 24px; }
@@ -734,5 +735,8 @@ button.link:hover { color: var(--muted); }
     -webkit-backdrop-filter: none; backdrop-filter: none;
   }
   .dock, .controls, .chip, .pill { background: rgba(16,16,16,.78); }
-  .invite, .join-row { background: rgba(0,0,0,.55); }
+  .invite { background: rgba(0,0,0,.55); }
+}
+@media (pointer: coarse) and (min-width: 641px) {
+  .join-row { background: rgba(0,0,0,.55); }
 }

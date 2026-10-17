@@ -459,6 +459,12 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
+    // A browser's report of what its video is doing, for debugging calls we can't watch.
+    if (msg.type === 'diag') {
+      console.log('diag', room?.name || '-', ws.displayName || '-', JSON.stringify(msg.data).slice(0, 6000));
+      return;
+    }
+
     if (msg.type === 'session-continue') {
       if (room.host === ws) scheduleCheck(room);
       return;

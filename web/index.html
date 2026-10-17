@@ -241,6 +241,18 @@
     <menu><button id="denyBtn" class="btn" type="button">Deny</button><button id="allowBtn" class="btn primary" type="button">Allow</button></menu>
   </dialog>
 
+  <dialog id="txAskDialog" class="ask">
+    <span class="ask-icon"><svg class="icon"><use href="#i-cc"/></svg></span>
+    <h2>Transcribe this call?</h2>
+    <p class="muted">Everyone's words are written down with their name and shown as captions. You can save the transcript and get a summary afterwards.</p>
+    <select id="askLang" class="ask-select" aria-label="Spoken language">
+      <option value="">Any language</option>
+      <option value="en">English</option>
+      <option value="es">Español</option>
+    </select>
+    <menu><button id="askNo" class="btn" type="button">Not now</button><button id="askYes" class="btn primary" type="button">Start</button></menu>
+  </dialog>
+
   <dialog id="helperDialog">
     <h2>One small download</h2>
     <p><b class="peer-name"></b> wants to control your computer. Browsers can't do that by themselves, so open <b>DevAssist Helper</b>. It runs without installing and stops when you close it.</p>

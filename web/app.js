@@ -587,13 +587,6 @@ function addPeer(id, name, initiator) {
   p.dc.onopen = () => {
     if (state.screenStream) sendTo(id, { t: 'screen-on', streamId: state.screenStream.id });
     if (tx.on && state.isHost) sendTo(id, { t: 'transcribe', on: true, engine: tx.engine, lang: tx.lang, already: true });
-    // Captions are on by default: the host starts the transcript when the
-    // first person arrives. If they stop it, it stays off for this call.
-    else if (state.isHost && !tx.autoStarted) {
-      tx.autoStarted = true;
-      broadcast({ t: 'transcribe', on: true, engine: tx.engine, lang: tx.lang });
-      setTranscribing(true, null);
-    }
     updateControlBtn();
   };
   p.dc.onmessage = (e) => onData(p, JSON.parse(e.data));
@@ -618,8 +611,36 @@ function addPeer(id, name, initiator) {
     };
     routeStreams(p);
   };
-  pc.onconnectionstatechange = updateStatus;
+  pc.onconnectionstatechange = () => {
+    updateStatus();
+    if (pc.connectionState === 'connected') { setTimeout(() => sendDiag(p), 4000); setTimeout(() => sendDiag(p), 15000); }
+  };
   return p;
+}
+
+// What this browser is doing with someone's video, sent to the server log so
+// a call that misbehaves on a phone we can't watch can still be diagnosed.
+async function sendDiag(p) {
+  if (!peers.has(p.id) || state.ended) return;
+  const v = p.tile.querySelector('video');
+  const r = v.getBoundingClientRect();
+  const inbound = [];
+  try {
+    const stats = await p.pc.getStats();
+    stats.forEach((s) => {
+      if (s.type !== 'inbound-rtp') return;
+      const codec = stats.get(s.codecId);
+      inbound.push({ kind: s.kind, codec: codec?.mimeType, bytes: s.bytesReceived, frames: s.framesReceived, decoded: s.framesDecoded, w: s.frameWidth, h: s.frameHeight });
+    });
+  } catch {}
+  signal({ type: 'diag', data: {
+    ua: navigator.userAgent, from: state.myName, about: p.name, conn: p.pc.connectionState, mode: $('stage').dataset.mode,
+    streams: [...p.streams.values()].map((s) => ({ id: s.id.slice(0, 8), tracks: s.getTracks().map((t) => `${t.kind}:${t.readyState}${t.muted ? ':muted' : ''}${t.enabled ? '' : ':disabled'}`) })),
+    video: { src: v.srcObject?.id?.slice(0, 8) || null, w: v.videoWidth, h: v.videoHeight, paused: v.paused, ready: v.readyState, muted: v.muted, blocked: blocked.has(v),
+      box: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)], display: getComputedStyle(v).display, vis: getComputedStyle(v).visibility,
+      tile: getComputedStyle(p.tile).display, grid: $('grid').hidden ? 'hidden' : getComputedStyle($('grid')).display },
+    inbound,
+  } });
 }
 
 // Each person sends up to two streams: camera+mic, and their screen.
@@ -687,6 +708,7 @@ async function onSignal(msg) {
       tx.cloud = !!msg.cloud;
       syncTranscriptUI();
       for (const o of msg.peers) addPeer(o.id, o.name, true);
+      if (state.isHost && !tx.on && !tx.asked) askTranscript();
       updateStage();
       updateStatus();
       break;
@@ -1697,6 +1719,22 @@ function txStatus(text) {
   $('txStatus').hidden = !text;
   $('txStatus').textContent = text;
 }
+
+// The host is asked once, as they join, whether to transcribe the call and in
+// which language. Captions come from the transcript.
+function askTranscript() {
+  tx.asked = true;
+  $('askLang').value = tx.lang;
+  $('txAskDialog').showModal();
+}
+$('askNo').onclick = () => $('txAskDialog').close();
+$('askYes').onclick = () => {
+  $('txAskDialog').close();
+  tx.lang = $('askLang').value;
+  $('txLang').value = tx.lang;
+  try { localStorage.setItem('devassist:lang', tx.lang); } catch {}
+  if (!tx.on) $('txToggle').onclick();
+};
 
 $('txToggle').onclick = () => {
   if (!state.isHost) return;

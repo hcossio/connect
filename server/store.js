@@ -17,6 +17,8 @@ data.users ||= [];
 data.meetings ||= [];
 data.usage ||= {};
 data.scheduled ||= [];
+data.recordings ||= [];
+for (const r of data.recordings) if (!r.endedAt) r.endedAt = r.lastChunkAt || r.startedAt;
 // Meetings that were open when the server last stopped ended then.
 for (const m of data.meetings) {
   if (!m.endedAt) { m.endedAt = m.lastSeen || m.startedAt; m.interrupted = true; }
@@ -59,4 +61,4 @@ function addClip(m, audioSec) {
   save();
 }
 
-module.exports = { data, save, addMeeting, endMeeting, addClip };
+module.exports = { dir: DIR, data, save, addMeeting, endMeeting, addClip };

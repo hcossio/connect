@@ -75,6 +75,14 @@
       <p id="recentEmpty" class="muted small" hidden>No finished meetings yet.</p>
     </section>
 
+    <section class="panel">
+      <h2>Remote control recordings</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Meeting</th><th>When</th><th>Length</th><th>Controlled</th><th>Size</th><th></th></tr></thead>
+        <tbody id="recRows"></tbody>
+      </table></div>
+      <p id="recEmpty" class="muted small" hidden>No recordings yet. Remote control sessions you run while signed in are recorded here.</p>
+    </section>
   </main>
 
   <main id="profile" class="admin-main narrow" hidden>
@@ -84,6 +92,7 @@
         <label class="field"><span>Display name <span class="muted">(your name in calls)</span></span><input id="pfDisplay" maxlength="40" autocomplete="name"></label>
         <label class="field"><span>Username</span><input id="pfUsername" required minlength="3" maxlength="32" autocomplete="username" autocapitalize="off"></label>
         <label class="field"><span>Email</span><input id="pfEmail" type="email" required autocomplete="email"></label>
+        <label class="check"><input id="pfRecord" type="checkbox"> Record my remote control sessions <span class="muted small">(the other person sees that it's recorded)</span></label>
         <label class="check"><input id="pfWaiting" type="checkbox"> Use a waiting room in my calls <span class="muted small">(guests wait until you let them in; scheduled meetings have their own setting)</span></label>
         <button class="btn primary" type="submit">Save profile</button>
         <p id="pfMsg" class="small" hidden></p>
@@ -123,6 +132,15 @@
       <div class="sum-actions"><button id="txDl" class="btn sm" type="button">Download</button></div>
       <div id="txLines"></div>
     </div>
+  </dialog>
+  <dialog id="recDialog" class="tx-dialog rec-dialog">
+    <header class="tx-dialog-head">
+      <div><h2 id="recTitle">Recording</h2><p id="recMeta" class="muted small"></p></div>
+      <span class="spacer"></span>
+      <a id="recDl" class="btn sm" href="#">Download</a>
+      <button id="recClose" class="btn sm" type="button">Close</button>
+    </header>
+    <video id="recVideo" controls playsinline></video>
   </dialog>
   <script src="/admin.js"></script>
 </body>

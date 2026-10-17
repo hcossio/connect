@@ -226,8 +226,9 @@ input:focus, textarea:focus { border-color: #fff; }
 .stage[data-mode="empty"] { background: #000 url(/img/bg-desktop.webp) center / cover no-repeat; }
 .empty {
   position: absolute; inset: 0; z-index: 1; display: grid; align-content: center; justify-items: start;
-  gap: 18px; padding: 96px var(--pad) 130px;
+  gap: 18px; padding: 96px var(--pad) 130px; grid-template-columns: minmax(0, 1fr);
 }
+.empty > * { max-width: 100%; }
 .empty-title { font-size: clamp(40px, 6vw, 88px); max-width: 11ch; }
 #emptySub { max-width: 520px; margin: 0; }
 .invite {
@@ -577,8 +578,8 @@ dialog.ask menu .btn { height: 52px; font-size: 16px; }
     gap: 4px; padding: 7px 8px; justify-content: space-between; overflow-x: auto; scrollbar-width: none;
   }
   .controls::-webkit-scrollbar { display: none; }
-  .ctrl { height: 44px; width: clamp(36px, calc((100vw - 32px - 8 * 4px) / 9), 44px); }
-  .ctrl.danger { width: clamp(44px, calc((100vw - 32px - 8 * 4px) / 9 + 8px), 56px); }
+  /* Same size both ways so every button stays a circle. */
+  .ctrl, .ctrl.danger { flex: 1 1 0; min-width: 34px; max-width: 48px; width: auto; height: auto; aspect-ratio: 1; border-radius: 50%; }
   .ctrl .icon { width: 20px; height: 20px; }
   .ctrl .swatch { top: 5px; right: 5px; width: 8px; height: 8px; }
   .pointer svg { width: 18px; height: 18px; }
@@ -587,9 +588,6 @@ dialog.ask menu .btn { height: 52px; font-size: 16px; }
   dialog.ask h2 { font-size: 24px; }
 }
 
-@media (max-width: 360px) {
-  .ctrl { height: 40px; }
-}
 
 /* ---------- Sign in and admin ---------- */
 .form-error { color: #ff8a8a; margin: 0; }

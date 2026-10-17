@@ -79,7 +79,7 @@ function updateStage() {
   state.shownId = focus?.id ?? null;
   const screen = $('remoteScreen');
   if (focus) {
-    if (screen.srcObject !== focus.screen) screen.srcObject = focus.screen;
+    if (screen.srcObject !== focus.screen) { screen.srcObject = focus.screen; playWhenAllowed(screen); }
     screen.hidden = false;
   } else {
     screen.hidden = true;
@@ -143,6 +143,7 @@ function syncMediaButtons() {
   }
   const camOn = !!v && v.enabled;
   $('previewOff').hidden = camOn;
+  $('lobby').dataset.cam = camOn ? 'on' : 'off'; // the room photo only shows with no camera
   if (!camOn) $('previewOff').textContent = v ? 'Camera is off' : 'Camera unavailable';
   $('selfAvatar').hidden = camOn;
   $('selfAvatar').textContent = initials(state.myName);
@@ -152,6 +153,7 @@ function syncNoiseButtons() {
     b.hidden = !noise.node;
     b.classList.toggle('off', !noise.on);
     b.title = noise.on ? 'Noise filter on: only voices come through' : 'Noise filter off';
+    b.setAttribute('aria-checked', String(noise.on));
   }
 }
 for (const b of $$('.media-mic')) b.onclick = () => {
@@ -166,6 +168,39 @@ for (const b of $$('.media-noise')) b.onclick = () => {
   routeMic();
   syncNoiseButtons();
   toast(noise.on ? 'Noise filter on' : 'Noise filter off', 2000);
+};
+
+// Phones (iOS Safari above all) can refuse to start a video that has sound
+// until the person touches the page. If that happens, try again on the next
+// tap so the other person's camera doesn't stay blank.
+const blocked = new Set();
+function playWhenAllowed(v) {
+  v.play?.()?.catch(() => { blocked.add(v); toast('Tap anywhere to start the video', 5000); });
+}
+addEventListener('pointerdown', () => {
+  for (const v of blocked) v.play().then(() => blocked.delete(v), () => {});
+}, true);
+
+// ---------- Settings menu: sound, noise filter, captions ----------
+function setSettingsOpen(open) {
+  $('settingsMenu').hidden = !open;
+  $('settingsBtn').classList.toggle('active', open);
+  $('settingsBtn').setAttribute('aria-expanded', String(open));
+}
+$('settingsBtn').onclick = () => setSettingsOpen($('settingsMenu').hidden);
+addEventListener('pointerdown', (e) => {
+  if (!$('settingsMenu').hidden && !e.target.closest('#settingsMenu, #settingsBtn')) setSettingsOpen(false);
+});
+addEventListener('keydown', (e) => { if (e.key === 'Escape') setSettingsOpen(false); });
+// Sound off mutes everyone else on this device only; they aren't told.
+state.soundOff = false;
+$('speakerBtn').onclick = () => {
+  state.soundOff = !state.soundOff;
+  for (const v of $$('#grid video, #remoteScreen')) v.muted = state.soundOff;
+  $('speakerBtn').classList.toggle('off', state.soundOff);
+  $('speakerBtn').setAttribute('aria-checked', String(!state.soundOff));
+  $('settingsBtn').classList.toggle('muted', state.soundOff);
+  toast(state.soundOff ? 'Sound off: you won\'t hear the others' : 'Sound on', 2000);
 };
 
 // ---------- Noise filter ----------
@@ -538,6 +573,13 @@ function addPeer(id, name, initiator) {
   p.dc.onopen = () => {
     if (state.screenStream) sendTo(id, { t: 'screen-on', streamId: state.screenStream.id });
     if (tx.on && state.isHost) sendTo(id, { t: 'transcribe', on: true, engine: tx.engine, lang: tx.lang, already: true });
+    // Captions are on by default: the host starts the transcript when the
+    // first person arrives. If they stop it, it stays off for this call.
+    else if (state.isHost && !tx.autoStarted) {
+      tx.autoStarted = true;
+      broadcast({ t: 'transcribe', on: true, engine: tx.engine, lang: tx.lang });
+      setTranscribing(true, null);
+    }
     updateControlBtn();
   };
   p.dc.onmessage = (e) => onData(p, JSON.parse(e.data));
@@ -571,7 +613,8 @@ function routeStreams(p) {
   p.screen = (p.screenStreamId && p.streams.get(p.screenStreamId)) || null;
   p.cam = [...p.streams.values()].find((s) => s.id !== p.screenStreamId) || null;
   const v = p.tile.querySelector('video');
-  if (v.srcObject !== p.cam) v.srcObject = p.cam;
+  if (v.srcObject !== p.cam) { v.srcObject = p.cam; playWhenAllowed(v); }
+  v.muted = state.soundOff;
   updateStage();
 }
 
@@ -1606,8 +1649,9 @@ function syncTranscriptUI() {
   $('txToggle').textContent = tx.on ? 'Stop transcript' : 'Start transcript';
   $('txToggle').classList.toggle('primary', !tx.on);
   $('txDot').hidden = !tx.on;
-  $('ccBtn').hidden = !tx.on;
   $('ccBtn').classList.toggle('active', state.captions);
+  $('ccBtn').setAttribute('aria-checked', String(state.captions));
+  $('ccBtn').title = tx.on ? '' : 'Captions show while the transcript is on';
   $('txDownload').disabled = !tx.lines.length;
   $('txSave').disabled = !tx.lines.length || tx.saving;
   for (const b of $$('.seg button')) b.setAttribute('aria-checked', String(b.dataset.engine === engine));
@@ -1846,6 +1890,7 @@ state.captions = true;
 $('ccBtn').onclick = () => {
   state.captions = !state.captions;
   $('ccBtn').classList.toggle('active', state.captions);
+  $('ccBtn').setAttribute('aria-checked', String(state.captions));
   if (!state.captions) { $('captions').replaceChildren(); cc.id = null; }
 };
 

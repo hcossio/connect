@@ -999,8 +999,8 @@ $('typeForm').addEventListener('submit', (e) => {
 
 // ---------- Shared pointers ----------
 // With Pointers on, your mouse over the shared screen shows up, in your own
-// color, for everyone else who has Pointers on. Whoever is sharing sees them
-// drawn on their real screen by DevAssist Helper, when it's running.
+// color, for everyone else who has Pointers on. Whoever is sharing always sees
+// them drawn on their real screen by DevAssist Helper, when it's running.
 const POINTER_COLORS = ['#f97316', '#22c55e', '#ec4899', '#eab308', '#06b6d4', '#a855f7', '#ef4444', '#84cc16'];
 const colorOf = (id) => POINTER_COLORS[(id - 1) % POINTER_COLORS.length];
 let pointerOn = null; // whose screen our pointer is on, as we last told everyone
@@ -1031,7 +1031,7 @@ screenEl.addEventListener('resize', syncPointers); // the shared screen changed 
 
 function onPointer(p, m) {
   p.pointer = m.on == null ? null : { on: m.on, x: m.x, y: m.y };
-  if (p.pointer && !state.pointers && !pointerHinted && (m.on === state.shownId || m.on === state.myId)) {
+  if (p.pointer && !state.pointers && !pointerHinted && m.on === state.shownId) {
     pointerHinted = true;
     toast(`${p.name} is pointing at the screen. Turn on Pointers to see it.`);
   }
@@ -1068,10 +1068,13 @@ function drawPointer(p) {
     clearTimeout(el.idle);
     el.idle = setTimeout(() => el.classList.add('idle'), 4000);
   } else if (el) el.hidden = true;
-  // On our own screen: DevAssist Helper draws it over everything else.
-  if (pt && pt.on === state.myId && state.screenStream) {
+  // On our own screen: DevAssist Helper draws it over everything else. The
+  // presenter sees these without turning Pointers on, since they aren't
+  // looking at the app while they share.
+  const mine = p.pointer;
+  if (mine && mine.on === state.myId && state.screenStream) {
     if (state.agent) {
-      agentSend({ type: 'pointer', id: p.id, name: p.name, color: colorOf(p.id), x: pt.x, y: pt.y });
+      agentSend({ type: 'pointer', id: p.id, name: p.name, color: colorOf(p.id), x: mine.x, y: mine.y });
       p.pointerSent = true;
     } else tryHelper();
   } else if (p.pointerSent) {

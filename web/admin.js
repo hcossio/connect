@@ -29,7 +29,7 @@ function transcriptCell(m) {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = 'link';
-  b.textContent = `View (${m.transcriptLines} lines)`;
+  b.textContent = `View (${m.transcriptLines} lines${m.tasks ? `, ${m.tasks} ${m.tasks === 1 ? 'task' : 'tasks'}` : ''})`;
   b.onclick = () => openTranscript(m.id);
   return b;
 }
@@ -67,25 +67,94 @@ async function refresh() {
 }
 
 // ---------- Transcript viewer ----------
+// Two tabs: the AI summary with its tasks and the prompt to paste into a
+// coding agent, and the transcript itself.
 let shown = null;
+let pollTimer = 0;
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
 async function openTranscript(id) {
   const r = await fetch(`/api/admin/meetings/${encodeURIComponent(id)}`);
   if (!r.ok) return;
   shown = await r.json();
   const t = shown.transcript;
-  $('txTitle').textContent = `Transcript of ${shown.room}`;
-  $('txMeta').textContent = `${fmtWhen(shown.startedAt)} · saved by ${t.by} at ${fmtWhen(t.savedAt)} · ${t.lines.length} lines`;
-  $('txBody').replaceChildren(...t.lines.map((l) => {
-    const p = document.createElement('p');
-    const who = document.createElement('b'); who.textContent = l.name;
-    const at = document.createElement('span'); at.className = 'muted small'; at.textContent = new Date(l.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    const head = document.createElement('span'); head.className = 'tx-who'; head.append(who, at);
-    const text = document.createElement('span'); text.textContent = l.text;
-    p.append(head, text);
+  $('txTitle').textContent = shown.summary?.title || `Meeting in ${shown.room}`;
+  $('txMeta').textContent = `${shown.room} · ${fmtWhen(shown.startedAt)} · saved by ${t.by} at ${fmtWhen(t.savedAt)} · ${t.lines.length} lines`;
+  $('txLines').replaceChildren(...t.lines.map((l) => {
+    const p = el('p');
+    const head = el('span', 'tx-who');
+    head.append(el('b', null, l.name), el('span', 'muted small', new Date(l.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })));
+    p.append(head, el('span', null, l.text));
     return p;
   }));
-  $('txDialog').showModal();
+  renderSummary();
+  if (!$('txDialog').open) { showTab('summary'); $('txDialog').showModal(); }
 }
+
+function renderSummary() {
+  clearTimeout(pollTimer);
+  const s = shown.summary;
+  const body = $('sumBody');
+  $('sumCopy').hidden = s?.status !== 'done' && !s?.prompt;
+  $('sumRedo').hidden = !shown.summaryEnabled || s?.status === 'working';
+  $('sumRedo').textContent = s ? 'Write it again' : 'Write summary';
+  $('sumStatus').textContent = '';
+  if (!shown.summaryEnabled && !s) return body.replaceChildren(el('p', 'muted', 'Summaries need xAI, which is not set up on this server (XAI_API_KEY).'));
+  if (!s) return body.replaceChildren(el('p', 'muted', 'No summary yet.'));
+  if (s.status === 'working') {
+    $('sumStatus').textContent = 'Grok is reading the transcript…';
+    pollTimer = setTimeout(() => $('txDialog').open && openTranscript(shown.id), 3000);
+    if (!s.prompt) return body.replaceChildren();
+  }
+  if (s.status === 'error') $('sumStatus').textContent = s.error;
+  if (!s.prompt) return body.replaceChildren();
+  if (s.lines && s.lines < shown.transcript.lines.length) $('sumStatus').textContent = `Written from the first ${s.lines} lines. Write it again to include the rest.`;
+
+  const parts = [el('p', 'sum-text', s.summary)];
+  if (s.decisions.length) {
+    parts.push(el('h3', null, 'Decisions'));
+    const ul = el('ul', 'sum-list');
+    for (const d of s.decisions) ul.append(el('li', null, d));
+    parts.push(ul);
+  }
+  parts.push(el('h3', null, `Tasks (${s.tasks.length})`));
+  if (!s.tasks.length) parts.push(el('p', 'muted small', 'No tasks came out of this call.'));
+  const ol = el('ol', 'sum-tasks');
+  for (const t of s.tasks) {
+    const li = el('li');
+    const head = el('div', 'task-head');
+    head.append(el('b', null, t.title), el('span', 'owner' + (t.owner ? '' : ' general'), t.owner || 'General'));
+    li.append(head);
+    if (t.details) li.append(el('p', 'muted small', t.details));
+    ol.append(li);
+  }
+  parts.push(ol);
+  const details = el('details', 'sum-prompt');
+  details.append(el('summary', null, 'Agent prompt'), el('pre', null, s.prompt));
+  parts.push(details);
+  body.replaceChildren(...parts);
+}
+
+function showTab(which) {
+  $('tabSummary').setAttribute('aria-selected', String(which === 'summary'));
+  $('tabLines').setAttribute('aria-selected', String(which !== 'summary'));
+  $('sumPane').hidden = which !== 'summary';
+  $('txBody').hidden = which === 'summary';
+}
+$('tabSummary').onclick = () => showTab('summary');
+$('tabLines').onclick = () => showTab('lines');
+$('txDialog').addEventListener('close', () => clearTimeout(pollTimer));
+$('sumCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText(shown.summary.prompt); $('sumCopy').textContent = 'Copied'; }
+  catch { $('sumCopy').textContent = 'Could not copy'; }
+  setTimeout(() => { $('sumCopy').textContent = 'Copy agent prompt'; }, 1500);
+};
+$('sumRedo').onclick = async () => {
+  const r = await fetch(`/api/admin/meetings/${encodeURIComponent(shown.id)}/summary`, { method: 'POST' });
+  if (!r.ok) { $('sumStatus').textContent = (await r.json().catch(() => ({}))).error || 'Could not start it.'; return; }
+  shown.summary = { ...(shown.summary || {}), status: 'working' };
+  renderSummary();
+};
 $('txClose').onclick = () => $('txDialog').close();
 $('txDl').onclick = () => {
   const t = shown.transcript;

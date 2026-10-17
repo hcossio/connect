@@ -17,7 +17,10 @@ data.users ||= [];
 data.meetings ||= [];
 data.usage ||= {};
 // Meetings that were open when the server last stopped ended then.
-for (const m of data.meetings) if (!m.endedAt) { m.endedAt = m.lastSeen || m.startedAt; m.interrupted = true; }
+for (const m of data.meetings) {
+  if (!m.endedAt) { m.endedAt = m.lastSeen || m.startedAt; m.interrupted = true; }
+  if (m.summary?.status === 'working') Object.assign(m.summary, { status: 'error', error: 'The server restarted while writing it. Try again.' });
+}
 
 let timer = null;
 function save() {

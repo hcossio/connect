@@ -10,6 +10,7 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 const store = require('./store');
 const auth = require('./auth');
+const summary = require('./summary');
 
 const PORT = process.env.PORT || 3000;
 // Each person sends their camera to everyone else, so small groups only.
@@ -122,7 +123,7 @@ app.get('/api/admin/stats', auth.requireAdmin, (_req, res) => {
   const today = days[days.length - 1];
   for (const m of open) today.minutes += (Date.now() - Math.max(m.startedAt, Date.parse(today.day))) / 60_000; // still running
   const recent = store.data.meetings.filter((m) => m.endedAt).slice(-50).reverse()
-    .map(({ transcript, ...m }) => ({ ...m, transcriptLines: transcript?.lines.length || 0 }));
+    .map(({ transcript, summary: s, ...m }) => ({ ...m, transcriptLines: transcript?.lines.length || 0, tasks: s?.tasks?.length ?? null }));
   res.json({ open, days, recent, pricePerHour: XAI_PRICE_PER_HOUR, cloud: !!XAI_KEY });
 });
 
@@ -176,22 +177,41 @@ function dropFiles(room) {
 
 // ---------- Saved transcripts ----------
 // The meeting's host can save the transcript to the meeting; the admin page shows it.
+const summaryTimers = new Map();
+/** Store the host's transcript on the meeting; returns an error message or the line count. */
+function saveTranscript(ws, raw) {
+  if (ws.room.host !== ws) return { error: 'Only the meeting host can save the transcript' };
+  const lines = (Array.isArray(raw) ? raw : []).slice(0, 5000).map((l) => ({
+    name: String(l?.name || '').slice(0, 40), text: String(l?.text || '').slice(0, 2000), at: Number(l?.at) || 0,
+  })).filter((l) => l.text);
+  if (!lines.length) return { error: 'The transcript is empty' };
+  const m = ws.room.meeting;
+  m.transcript = { savedAt: Date.now(), by: ws.displayName, lines };
+  store.save();
+  // Saving again later in the call rewrites the summary, but not more than once a minute.
+  clearTimeout(summaryTimers.get(m.id));
+  const wait = Math.max(0, 60_000 - (Date.now() - (m.summary?.startedAt || 0)));
+  summaryTimers.set(m.id, setTimeout(() => { summaryTimers.delete(m.id); summary.summarize(m); }, wait));
+  return { lines: lines.length };
+}
 app.post('/api/transcript', express.json({ limit: '2mb' }), (req, res) => {
   const ws = callers.get(req.get('x-token'));
   if (!ws?.room) return res.status(403).json({ error: 'Not in a call' });
-  if (ws.room.host !== ws) return res.status(403).json({ error: 'Only the meeting host can save the transcript' });
-  const lines = (Array.isArray(req.body?.lines) ? req.body.lines : []).slice(0, 5000).map((l) => ({
-    name: String(l?.name || '').slice(0, 40), text: String(l?.text || '').slice(0, 2000), at: Number(l?.at) || 0,
-  })).filter((l) => l.text);
-  if (!lines.length) return res.status(400).json({ error: 'The transcript is empty' });
-  ws.room.meeting.transcript = { savedAt: Date.now(), by: ws.displayName, lines };
-  store.save();
-  res.json({ ok: true, lines: lines.length });
+  const out = saveTranscript(ws, req.body?.lines);
+  if (out.error) return res.status(out.error.startsWith('Only') ? 403 : 400).json(out);
+  res.json({ ok: true, lines: out.lines, summary: summary.enabled });
 });
 app.get('/api/admin/meetings/:id', auth.requireAdmin, (req, res) => {
   const m = store.data.meetings.find((x) => x.id === req.params.id);
   if (!m) return res.status(404).json({ error: 'No such meeting' });
-  res.json(m);
+  res.json({ ...m, summaryEnabled: summary.enabled });
+});
+app.post('/api/admin/meetings/:id/summary', auth.requireAdmin, (req, res) => {
+  const m = store.data.meetings.find((x) => x.id === req.params.id);
+  if (!m?.transcript) return res.status(404).json({ error: 'That meeting has no saved transcript' });
+  if (!summary.enabled) return res.status(503).json({ error: 'xAI is not set up on this server' });
+  summary.summarize(m);
+  res.json({ ok: true });
 });
 
 const server = http.createServer(app);
@@ -283,6 +303,12 @@ wss.on('connection', (ws, req) => {
     }
 
     if (!room) return;
+
+    // The host's browser sends its transcript as it leaves, if they saved it before.
+    if (msg.type === 'save-transcript') {
+      saveTranscript(ws, msg.lines);
+      return;
+    }
 
     if (msg.type === 'session-continue') {
       if (room.host === ws) scheduleCheck(room);

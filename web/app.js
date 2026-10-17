@@ -716,6 +716,11 @@ addEventListener('pagehide', () => { if (!state.ended) teardown(); });
 
 function teardown() {
   if (state.ended) return;
+  // Once the host has saved the transcript, keep the saved copy up to date
+  // as they leave so the summary covers the whole call.
+  if (tx.savedCount && tx.lines.length > tx.savedCount && state.isHost) {
+    signal({ type: 'save-transcript', lines: tx.lines.map(({ name, text, at }) => ({ name, text, at })) });
+  }
   state.ended = true;
   clearInterval(helperPoll);
   clearInterval(pointerHelperPoll);
@@ -1705,8 +1710,8 @@ $('txSave').onclick = async () => {
       body: JSON.stringify({ lines: tx.lines.map(({ name, text, at }) => ({ name, text, at })) }),
     });
     const out = await r.json().catch(() => ({}));
-    toast(r.ok ? `Saved ${out.lines} lines with this meeting` : out.error || 'Could not save the transcript');
-    if (r.ok) $('txSave').textContent = 'Saved';
+    toast(r.ok ? `Saved ${out.lines} lines with this meeting${out.summary ? '. The summary and tasks will be in the admin page.' : ''}` : out.error || 'Could not save the transcript', r.ok && out.summary ? 6000 : undefined);
+    if (r.ok) { $('txSave').textContent = 'Saved'; tx.savedCount = out.lines; }
   } catch { toast('Could not save the transcript'); }
   tx.saving = false;
   syncTranscriptUI();

@@ -73,7 +73,7 @@ function routes(app, express) {
 
   app.get('/api/me', (req, res) => {
     const u = userFrom(req);
-    res.json({ user: u && { username: u.username, email: u.email, role: u.role } });
+    res.json({ user: u && { username: u.username, email: u.email, role: u.role, displayName: u.displayName || '' } });
   });
 
   app.post('/api/login', json, (req, res) => {
@@ -90,6 +90,19 @@ function routes(app, express) {
 
   app.post('/api/logout', (_req, res) => {
     res.clearCookie(COOKIE, { path: '/' });
+    res.json({ ok: true });
+  });
+
+  app.post('/api/profile', json, (req, res) => {
+    const user = userFrom(req);
+    if (!user) return res.status(401).json({ error: 'Sign in first.' });
+    const username = String(req.body?.username ?? user.username).trim();
+    const email = String(req.body?.email ?? user.email).trim();
+    const displayName = String(req.body?.displayName ?? user.displayName ?? '').trim().slice(0, 40);
+    if (!/^[a-z0-9_.-]{3,32}$/i.test(username)) return res.status(400).json({ error: 'Usernames are 3 to 32 letters, numbers, dots, dashes or underscores.' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'That email doesn\'t look right.' });
+    Object.assign(user, { username, email, displayName });
+    store.save();
     res.json({ ok: true });
   });
 

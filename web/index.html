@@ -28,6 +28,8 @@
       <symbol id="i-popout" viewBox="0 0 24 24"><path d="M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"/><rect width="10" height="7" x="12" y="13" rx="2"/></symbol>
       <symbol id="i-slash" viewBox="0 0 24 24"><path d="m3 3 18 18"/></symbol>
       <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+      <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l8.6-8.6a4 4 0 0 1 5.7 5.7l-8.6 8.6a2 2 0 0 1-2.8-2.8l8.5-8.5"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
       <symbol id="i-cc" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="3"/><path d="M10 10.5a2.5 2.5 0 1 0 0 3M17 10.5a2.5 2.5 0 1 0 0 3"/></symbol>
       <symbol id="i-logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="var(--accent)" stroke="none"/><path d="M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z" fill="#fff" stroke="none"/></symbol>
     </defs>
@@ -126,9 +128,11 @@
           <button id="closeChatBtn" class="icon-btn" type="button" aria-label="Close chat"><svg class="icon"><use href="#i-x"/></svg></button>
         </header>
         <div id="messages" class="messages">
-          <p class="muted small center">Paste logs, commands or links here. Messages aren't saved.</p>
+          <p class="muted small center">Paste logs, commands or links here, or drop files up to 25 MB. Messages aren't saved, and files are deleted when the meeting ends.</p>
         </div>
         <form id="chatForm" class="composer">
+          <button id="attachBtn" class="icon-btn" type="button" title="Send a file (up to 25 MB)" aria-label="Send a file"><svg class="icon"><use href="#i-clip"/></svg></button>
+          <input id="fileInput" type="file" multiple hidden>
           <textarea id="chatInput" rows="1" placeholder="Message" autocomplete="off"></textarea>
           <button class="icon-btn primary" type="submit" aria-label="Send"><svg class="icon"><use href="#i-send"/></svg></button>
         </form>
@@ -137,6 +141,7 @@
             <button id="txToggle" class="btn sm primary host-only" type="button">Start transcript</button>
             <span id="txState" class="muted small"></span>
             <span class="spacer"></span>
+            <button id="txSave" class="btn sm host-only" type="button" title="Save this transcript with the meeting, to read later from the admin page" disabled>Save</button>
             <button id="txDownload" class="icon-btn" type="button" title="Download transcript" aria-label="Download transcript" disabled><svg class="icon"><use href="#i-download"/></svg></button>
           </div>
           <div class="tx-bar host-only">
@@ -152,7 +157,7 @@
           </div>
           <p id="txNote" class="muted small tx-note host-only"></p>
           <div id="transcriptLines" class="messages">
-            <p class="muted small center">Everyone's words show up here with their name once the meeting starter turns the transcript on. Transcripts aren't saved; download one to keep it.</p>
+            <p class="muted small center">Everyone's words show up here with their name once the meeting starter turns the transcript on. The meeting starter can save it with the meeting, and anyone can download it.</p>
           </div>
           <p id="txStatus" class="muted small tx-note" hidden></p>
         </div>

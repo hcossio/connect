@@ -164,7 +164,7 @@ wss.on('connection', (ws) => {
       room = r;
       const others = [...r.peers].map((p) => ({ id: p.peerId, name: p.displayName }));
       r.peers.add(ws);
-      send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, peers: others, token: ws.token, groq: !!GROQ_KEY });
+      send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, groq: !!GROQ_KEY });
       for (const p of r.peers) if (p !== ws) send(p, { type: 'peer-joined', id: ws.peerId, name: ws.displayName });
       return;
     }
@@ -189,7 +189,7 @@ wss.on('connection', (ws) => {
     // Someone still has to be asked whether to continue: pass it on.
     if (room.host === ws) {
       room.host = room.peers.values().next().value;
-      send(room.host, { type: 'host' });
+      for (const p of room.peers) send(p, { type: 'host', id: room.host.peerId });
       if (room.checking) send(room.host, { type: 'session-check' });
     }
   });

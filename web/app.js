@@ -25,7 +25,8 @@ const state = {
   controlPending: null,     // helper side: the person we asked, waiting for an answer
   unread: 0,
   pointers: false,          // show mouse pointers on the shared screen
-  isHost: false,            // started the session: gets the "still there?" check
+  isHost: false,            // started the session: gets the "still there?" check and runs the transcript
+  hostId: null,
   ended: false,
 };
 /**
@@ -460,7 +461,7 @@ function addPeer(id, name, initiator) {
   p.dc = pc.createDataChannel('app', { negotiated: true, id: 0 });
   p.dc.onopen = () => {
     if (state.screenStream) sendTo(id, { t: 'screen-on', streamId: state.screenStream.id });
-    if (tx.on) sendTo(id, { t: 'transcribe', on: true, already: true });
+    if (tx.on && state.isHost) sendTo(id, { t: 'transcribe', on: true, engine: tx.engine, lang: tx.lang, already: true });
     updateControlBtn();
   };
   p.dc.onmessage = (e) => onData(p, JSON.parse(e.data));
@@ -521,6 +522,7 @@ async function onSignal(msg) {
     case 'joined':
       state.myId = msg.id;
       state.isHost = !!msg.host;
+      state.hostId = msg.hostId;
       $('myColor').style.setProperty('--c', colorOf(msg.id));
       tx.token = msg.token;
       tx.groq = !!msg.groq;
@@ -541,7 +543,9 @@ async function onSignal(msg) {
       break;
     case 'host':
       // Whoever started the session left; the "still there?" check is ours now.
-      state.isHost = true;
+      state.hostId = msg.id;
+      state.isHost = msg.id === state.myId;
+      syncTranscriptUI();
       break;
     case 'session-check':
       // Sent only to whoever started the session. No countdown on purpose:
@@ -614,7 +618,7 @@ function onData(p, m) {
       break;
     case 'input': if (state.controlGrantedTo === p.id) agentSend(m.e); break;
     case 'pointer': onPointer(p, m); break;
-    case 'transcribe': setTranscribing(!!m.on, p, m.already); break;
+    case 'transcribe': if (p.id === state.hostId) onTranscribe(p, m); break;
     case 'line': if (typeof m.text === 'string') addLine(p.name, m.text.slice(0, 2000), Number(m.at) || Date.now(), false); break;
   }
 }
@@ -1098,10 +1102,11 @@ function syncPointers() {
 }
 
 // ---------- Transcript ----------
-// Anyone can start a transcript of the call. Each person then transcribes only
-// their own mic and shares the text, so every line carries the right name. Each
-// person picks where their voice is transcribed: Groq's hosted Whisper (fast and
-// accurate; clips go to Groq through our server) or Whisper on this device
+// The person who started the meeting turns the transcript on and picks how
+// voices are transcribed; everyone else just sees it. Each person's browser
+// then transcribes only their own mic and shares the text, so every line
+// carries the right name. Engines: Groq's hosted Whisper (fast and accurate;
+// clips go to Groq through our server) or Whisper on each person's device
 // (private; the model downloads once). Nothing is stored on the server.
 const SPEECH = {
   threshold: 0.008, // RMS level that counts as speech (the noise filter has already removed most noise)
@@ -1121,6 +1126,7 @@ const tx = {
   worker: null, jobs: new Map(), nextJob: 1,
   lines: [], // { name, text, at, mine }
 };
+// The meeting starter's own choices, remembered for their next meeting.
 try {
   tx.engine = localStorage.getItem('devassist:engine') === 'device' ? 'device' : 'groq';
   tx.lang = localStorage.getItem('devassist:lang') || '';
@@ -1142,6 +1148,9 @@ $('transcriptTab').onclick = () => showTab('transcript');
 
 function syncTranscriptUI() {
   const engine = engineNow();
+  $('transcriptPane').classList.toggle('is-host', state.isHost);
+  $('txState').textContent = state.isHost ? '' : tx.on ? 'The transcript is on' : 'The transcript is off';
+  $('txLang').value = tx.lang;
   $('txToggle').textContent = tx.on ? 'Stop transcript' : 'Start transcript';
   $('txToggle').classList.toggle('primary', !tx.on);
   $('txDot').hidden = !tx.on;
@@ -1150,19 +1159,26 @@ function syncTranscriptUI() {
   $('engGroq').disabled = !tx.groq;
   $('engGroq').title = tx.groq ? '' : 'Groq isn\'t set up on this server (GROQ_API_KEY)';
   $('txNote').textContent = engine === 'groq'
-    ? 'Your voice is sent to Groq to be transcribed. Fast and accurate.'
-    : 'Your voice stays on this computer. The speech model downloads once (about 80 to 200 MB) and is slower on older machines.';
+    ? 'Everyone\'s voice is sent to Groq to be transcribed. Fast and accurate.'
+    : 'Voices stay on each person\'s computer. Each browser downloads the speech model once (about 80 to 200 MB), and it\'s slower on older machines.';
+}
+// The meeting starter's settings apply to everyone.
+function shareTranscriptSettings() {
+  if (tx.on) broadcast({ t: 'transcribe', on: true, engine: tx.engine, lang: tx.lang });
 }
 for (const b of $$('.seg button')) b.onclick = () => {
-  if (b.disabled) return;
+  if (b.disabled || !state.isHost) return;
   tx.engine = b.dataset.engine;
   try { localStorage.setItem('devassist:engine', tx.engine); } catch {}
   txStatus('');
   syncTranscriptUI();
+  shareTranscriptSettings();
 };
 $('txLang').onchange = () => {
+  if (!state.isHost) return;
   tx.lang = $('txLang').value;
   try { localStorage.setItem('devassist:lang', tx.lang); } catch {}
+  shareTranscriptSettings();
 };
 function txStatus(text) {
   $('txStatus').hidden = !text;
@@ -1170,10 +1186,17 @@ function txStatus(text) {
 }
 
 $('txToggle').onclick = () => {
+  if (!state.isHost) return;
   const on = !tx.on;
-  broadcast({ t: 'transcribe', on });
+  broadcast({ t: 'transcribe', on, engine: tx.engine, lang: tx.lang });
   setTranscribing(on, null);
 };
+function onTranscribe(p, m) {
+  if (m.engine === 'groq' || m.engine === 'device') tx.engine = m.engine;
+  tx.lang = /^[a-z]{2}$/.test(m.lang) ? m.lang : '';
+  if (!!m.on === tx.on) return syncTranscriptUI(); // only the settings changed
+  setTranscribing(!!m.on, p, m.already);
+}
 // by: the person who switched it (null for us); already: it was on before we joined.
 function setTranscribing(on, by, already = false) {
   if (tx.on === on) return;
@@ -1285,7 +1308,10 @@ function viaDevice(audio) {
       else {
         const job = tx.jobs.get(m.id);
         tx.jobs.delete(m.id);
-        if (m.type === 'text') job?.resolve(m.text);
+        if (m.type === 'text') {
+          if (/^(Loading|Downloading)/.test($('txStatus').textContent)) txStatus('');
+          job?.resolve(m.text);
+        }
         else job?.reject(new Error(`On-device transcription failed (${m.message}).`));
       }
     };

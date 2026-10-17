@@ -297,6 +297,7 @@ textarea { resize: none; }
 .transcript { grid-row: 2 / 4; display: grid; grid-template-rows: auto auto auto 1fr auto; min-height: 0; }
 .tx-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px 0; }
 .tx-note { margin: 0; padding: 8px 12px 0; }
+.transcript:not(.is-host) .host-only { display: none; }
 #txStatus { padding: 8px 12px 10px; border-top: 1px solid var(--line); }
 .seg { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--surface-2); }
 .seg button {

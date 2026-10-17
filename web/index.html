@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0e1116">
-  <title>DevAssist</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b82f6'/%3E%3Cpath d='M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z' fill='white'/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#000000">
+  <title>Connect</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000'/%3E%3Cpath d='M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z' fill='white'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -31,45 +31,45 @@
       <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l8.6-8.6a4 4 0 0 1 5.7 5.7l-8.6 8.6a2 2 0 0 1-2.8-2.8l8.5-8.5"/></symbol>
       <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
       <symbol id="i-cc" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="3"/><path d="M10 10.5a2.5 2.5 0 1 0 0 3M17 10.5a2.5 2.5 0 1 0 0 3"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
       <symbol id="i-logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="var(--accent)" stroke="none"/><path d="M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z" fill="#fff" stroke="none"/></symbol>
     </defs>
   </svg>
 
   <!-- ===== Lobby ===== -->
   <section id="lobby" class="lobby">
-    <div class="lobby-card">
-      <div class="preview">
-        <video id="previewVideo" autoplay playsinline muted></video>
-        <div id="previewOff" class="preview-off">Starting camera…</div>
-        <div class="preview-controls">
-          <button class="round media-mic" type="button" title="Microphone"><svg class="icon"><use href="#i-mic"/></svg><svg class="icon slash"><use href="#i-slash"/></svg></button>
-          <button class="round media-cam" type="button" title="Camera"><svg class="icon"><use href="#i-cam"/></svg><svg class="icon slash"><use href="#i-slash"/></svg></button>
-          <button class="round media-noise" type="button" title="Noise filter"><svg class="icon"><use href="#i-voice"/></svg><svg class="icon slash"><use href="#i-slash"/></svg></button>
-        </div>
+    <div class="preview">
+      <video id="previewVideo" autoplay playsinline muted></video>
+      <div id="previewOff" class="preview-off">Starting camera…</div>
+    </div>
+    <header class="topnav">
+      <span class="wordmark">Connect</span>
+      <span class="spacer"></span>
+      <span id="signedIn" class="account" hidden><span id="signedInName"></span><span id="adminLink" hidden><a href="/admin">Meetings</a></span><a id="signOutLink" href="#">Sign out</a></span>
+      <a id="hostSignIn" class="account" href="/login" hidden>Sign in</a>
+    </header>
+    <form id="lobbyForm" class="hero">
+      <h1 id="lobbyTitle">Start a support call.</h1>
+      <p id="lobbySub" class="sub">Video, screen sharing and remote control, in your browser.</p>
+      <div class="join-row">
+        <input id="nameInput" placeholder="Your name" aria-label="Your name" maxlength="40" autocomplete="name">
+        <label id="roomField" class="room-field"><span class="sr">Room code <span id="roomOptional">(optional)</span></span>
+          <input id="roomInput" placeholder="Room code (optional)" maxlength="64" autocomplete="off" autocapitalize="off">
+        </label>
+        <button id="joinBtn" class="btn primary" type="submit">Start call</button>
       </div>
-      <form id="lobbyForm" class="lobby-form">
-        <div class="brand"><svg class="logo"><use href="#i-logo"/></svg>DevAssist
-          <span class="spacer"></span>
-          <span id="signedIn" class="account muted small" hidden><span id="signedInName"></span> · <span id="adminLink" hidden><a href="/admin">Admin</a> · </span><a id="signOutLink" href="#">Sign out</a></span>
-          <a id="hostSignIn" class="account muted small" href="/login" hidden>Host sign in</a>
-        </div>
-        <h1 id="lobbyTitle">Start a support call</h1>
-        <p id="lobbySub" class="muted">Video, screen sharing and remote control, in your browser.</p>
-        <label class="field"><span>Your name</span>
-          <input id="nameInput" placeholder="e.g. Humberto" maxlength="40" autocomplete="name">
-        </label>
-        <label id="roomField" class="field"><span>Room code <span id="roomOptional" class="muted">(optional)</span></span>
-          <input id="roomInput" placeholder="Leave empty to start a new room" maxlength="64" autocomplete="off" autocapitalize="off">
-        </label>
-        <button id="joinBtn" class="btn primary block" type="submit">Start call</button>
-      </form>
+    </form>
+    <div class="dock preview-controls">
+      <button class="round media-mic" type="button" title="Microphone"><svg class="icon"><use href="#i-mic"/></svg><svg class="icon slash"><use href="#i-slash"/></svg></button>
+      <button class="round media-cam" type="button" title="Camera"><svg class="icon"><use href="#i-cam"/></svg><svg class="icon slash"><use href="#i-slash"/></svg></button>
+      <button class="round media-noise" type="button" title="Noise filter"><svg class="icon"><use href="#i-voice"/></svg><svg class="icon slash"><use href="#i-slash"/></svg></button>
     </div>
   </section>
 
   <!-- ===== Call ===== -->
   <section id="call" class="call" hidden>
     <header class="topbar">
-      <svg class="logo"><use href="#i-logo"/></svg>
+      <span class="wordmark">Connect</span>
       <button id="roomChip" class="chip" type="button" title="Copy invite link">
         <span id="roomLabel"></span><svg class="icon sm"><use href="#i-copy"/></svg>
       </button>
@@ -80,13 +80,12 @@
     <main class="main">
       <div id="stage" class="stage" data-mode="empty">
         <div id="emptyState" class="empty">
-          <p id="emptyTitle" class="empty-title">Waiting for others to join</p>
-          <p id="emptySub" class="muted" hidden></p>
+          <h1 id="emptyTitle" class="empty-title">Waiting for your guest.</h1>
+          <p id="emptySub" class="sub" hidden></p>
           <div id="inviteBox">
-            <p class="muted">Send them this link:</p>
             <div class="invite">
-              <code id="inviteLink"></code>
-              <button id="copyInviteBtn" class="btn" type="button"><svg class="icon sm"><use href="#i-copy"/></svg>Copy</button>
+              <span id="inviteLink"></span>
+              <button id="copyInviteBtn" class="btn primary" type="button">Copy link</button>
             </div>
           </div>
         </div>
@@ -140,7 +139,7 @@
           <button id="attachBtn" class="icon-btn" type="button" title="Send a file (up to 25 MB)" aria-label="Send a file"><svg class="icon"><use href="#i-clip"/></svg></button>
           <input id="fileInput" type="file" multiple hidden>
           <textarea id="chatInput" rows="1" placeholder="Message" autocomplete="off"></textarea>
-          <button class="icon-btn primary" type="submit" aria-label="Send"><svg class="icon"><use href="#i-send"/></svg></button>
+          <button class="icon-btn primary send" type="submit" aria-label="Send"><svg class="icon"><use href="#i-arrow"/></svg></button>
         </form>
         <div id="transcriptPane" class="transcript" hidden>
           <div class="tx-bar">
@@ -203,13 +202,15 @@
 
   <!-- ===== Session ended ===== -->
   <section id="ended" class="ended" hidden>
+    <header class="topnav"><span class="wordmark">Connect</span></header>
     <div class="ended-card">
-      <svg class="logo"><use href="#i-logo"/></svg>
-      <h1 id="endedTitle">Session ended</h1>
-      <p id="endedReason" class="muted"></p>
+      <span class="check-ring"><svg class="icon"><use href="#i-check"/></svg></span>
+      <h1 id="endedTitle">That’s a wrap.</h1>
+      <p id="endedStats" class="sub" hidden></p>
+      <p id="endedReason" class="muted small"></p>
       <div class="ended-actions">
-        <a href="/" class="btn primary">Start a new call</a>
-        <button id="rejoinBtn" class="btn" type="button">Rejoin room</button>
+        <a href="/" class="btn primary">New call</a>
+        <button id="rejoinBtn" class="btn" type="button">Rejoin</button>
       </div>
     </div>
   </section>
@@ -221,9 +222,10 @@
     <menu><button id="endSessionBtn" class="btn" type="button">End session</button><button id="continueBtn" class="btn primary" type="button">Continue</button></menu>
   </dialog>
 
-  <dialog id="controlDialog">
-    <h2>Allow remote control?</h2>
-    <p><b class="peer-name"></b> will be able to move your mouse and type on this computer. You can stop it at any time.</p>
+  <dialog id="controlDialog" class="ask">
+    <span class="ask-icon"><svg class="icon"><use href="#i-pointer"/></svg></span>
+    <h2>Allow <span class="peer-name"></span> to control your screen?</h2>
+    <p class="muted">They can move your mouse and type on this computer. You can stop it any time.</p>
     <menu><button id="denyBtn" class="btn" type="button">Deny</button><button id="allowBtn" class="btn primary" type="button">Allow</button></menu>
   </dialog>
 

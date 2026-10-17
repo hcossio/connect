@@ -40,6 +40,15 @@ function roomCell(m) {
   d.append(m.title, Object.assign(document.createElement('div'), { className: 'muted small', textContent: m.room }));
   return d;
 }
+// Open meetings get a green dot: they're live.
+function liveCell(c) {
+  const d = document.createElement('div');
+  d.className = 'room-cell';
+  const dot = document.createElement('span');
+  dot.className = 'live-dot';
+  d.append(dot, c);
+  return d;
+}
 function fill(body, empty, rows) {
   $(body).replaceChildren(...rows.map(row));
   $(empty).hidden = rows.length > 0;
@@ -63,7 +72,7 @@ async function refresh() {
   $('kPrice').textContent = `At $${s.pricePerHour.toFixed(2)} per hour of audio`;
 
   const now = Date.now();
-  fill('openRows', 'openEmpty', s.open.map((m) => [roomCell(m), fmtWhen(m.startedAt), fmtDuration(now - m.startedAt), m.people.join(', ') + (m.waiting ? ` (${m.waiting} waiting)` : ''), fmtAudio(m.audioSec), transcriptCell(m)]));
+  fill('openRows', 'openEmpty', s.open.map((m) => [liveCell(roomCell(m)), fmtWhen(m.startedAt), fmtDuration(now - m.startedAt), m.people.join(', ') + (m.waiting ? ` (${m.waiting} waiting)` : ''), fmtAudio(m.audioSec), transcriptCell(m)]));
   fill('dayRows', 'dayEmpty', s.days.filter((d) => d.meetings || d.minutes || d.clips).reverse().map((d) => [
     new Date(d.day + 'T12:00:00Z').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
     d.meetings, fmtDuration(d.minutes * 60_000), fmtAudio(d.audioSec), d.clips, fmtCost(cost(d.audioSec)),

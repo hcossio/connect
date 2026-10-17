@@ -171,14 +171,28 @@ for (const b of $$('.media-noise')) b.onclick = () => {
 };
 
 // Phones (iOS Safari above all) can refuse to start a video that has sound
-// until the person touches the page. If that happens, try again on the next
-// tap so the other person's camera doesn't stay blank.
+// until the person touches the page. Then we start it muted, which is always
+// allowed, so the other person's camera shows, and turn the sound on at the
+// next tap.
 const blocked = new Set();
 function playWhenAllowed(v) {
-  v.play?.()?.catch(() => { blocked.add(v); toast('Tap anywhere to start the video', 5000); });
+  const start = () => v.play?.()?.catch(() => {
+    if (v.muted) return;
+    v.muted = true;
+    blocked.add(v);
+    v.play().catch(() => {});
+    toast('Tap anywhere to turn on the sound', 6000);
+  });
+  start();
+  // Some browsers only start once the stream's first frame arrives.
+  v.addEventListener('loadedmetadata', start, { once: true });
 }
 addEventListener('pointerdown', () => {
-  for (const v of blocked) v.play().then(() => blocked.delete(v), () => {});
+  for (const v of blocked) {
+    blocked.delete(v);
+    v.muted = state.soundOff;
+    v.play().catch(() => {});
+  }
 }, true);
 
 // ---------- Settings menu: sound, noise filter, captions ----------
@@ -614,7 +628,7 @@ function routeStreams(p) {
   p.cam = [...p.streams.values()].find((s) => s.id !== p.screenStreamId) || null;
   const v = p.tile.querySelector('video');
   if (v.srcObject !== p.cam) { v.srcObject = p.cam; playWhenAllowed(v); }
-  v.muted = state.soundOff;
+  if (!blocked.has(v)) v.muted = state.soundOff; // unmuting a blocked video would pause it again
   updateStage();
 }
 

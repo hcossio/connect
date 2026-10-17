@@ -61,6 +61,12 @@ The meeting starter's engine choice applies to everyone:
 
 A language setting (any, English, Español) helps both engines when everyone speaks the same language.
 
+## Hosts and admin
+
+Only a signed-in host can start a meeting. Guests join with the host's link or room code, and anyone who opens a link before the host arrives waits on a "Waiting for the host" screen until the meeting starts. There are no sign-ups. The one account is created from `ADMIN_USERNAME` (default `marcah`), `ADMIN_EMAIL` (default `hc@marcah.com`) and `ADMIN_PASSWORD`. You sign in at `/login` with the username or the email. You can change the password at `/admin`, and setting `ADMIN_PASSWORD` to a new value resets it, which is the way back in if you forget it. Changing the password signs out every other browser.
+
+`/admin` shows the meetings open right now (room, who's in it, how long it's been running, how much was transcribed), daily usage for the last 30 days, and the last 50 meetings. Transcription cost is estimated at `XAI_PRICE_PER_HOUR` (default $0.10 per hour of audio). Accounts, the meeting log and usage live in `store.json` under `DATA_DIR` (default `./data`). On Railway that is a volume mounted at `/data`, so they survive deploys.
+
 ## Noise filter
 
 Each person's mic runs through [RNNoise](https://jmvalin.ca/demo/rnnoise/) (via [`@sapphi-red/web-noise-suppressor`](https://github.com/sapphi-red/web-noise-suppressor), MIT) before it is sent, so keyboards, fans, traffic and background chatter are removed and voices come through. It runs locally in the browser in an AudioWorklet; no audio leaves the call. It's on by default, the waveform button turns it off and on (the choice is remembered), and switching doesn't interrupt the call. The browser's built-in echo cancellation and noise suppression stay on underneath. Browsers that can't run it fall back to the plain mic and hide the button.
@@ -69,11 +75,11 @@ Each person's mic runs through [RNNoise](https://jmvalin.ca/demo/rnnoise/) (via 
 
 ```bash
 npm install
-npm start            # http://localhost:3000
+ADMIN_PASSWORD=pick-one npm start   # http://localhost:3000
 npm run agent        # on the computer that will be controlled
 ```
 
-Open `http://localhost:3000`, join a room, and send the invite link. For use
+Open `http://localhost:3000/login`, sign in as `marcah` with that password, start a room, and send the invite link. For use
 across the internet, serve it over HTTPS (camera and screen APIs require a
 secure origin) and add a TURN server to `ICE_SERVERS` in `web/app.js`
 (coturn, or a hosted one) or calls behind strict NATs will fail.

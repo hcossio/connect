@@ -367,7 +367,31 @@ if (urlRoom) {
   $('joinBtn').textContent = 'Join call';
 }
 $('roomInput').oninput = () => {
-  $('joinBtn').textContent = $('roomInput').value.trim() ? 'Join call' : 'Start call';
+  const code = $('roomInput').value.trim();
+  $('joinBtn').textContent = code || !state.user ? 'Join call' : 'Start call';
+  if (!urlRoom && !state.user) $('joinBtn').disabled = !code;
+};
+
+// Only the host (signed in) starts meetings; everyone else joins with a link or code.
+const meReady = fetch('/api/me').then((r) => r.json()).then(({ user }) => {
+  state.user = user;
+  $('signedIn').hidden = !user;
+  $('hostSignIn').hidden = !!user || !!urlRoom;
+  if (user) {
+    $('signedInName').textContent = user.username;
+    $('adminLink').hidden = user.role !== 'admin';
+  } else if (!urlRoom) {
+    $('lobbyTitle').textContent = 'Join a support call';
+    $('lobbySub').textContent = 'Enter the room code your host sent you.';
+    $('roomOptional').hidden = true;
+    $('roomInput').placeholder = 'Room code';
+    $('roomInput').oninput();
+  }
+}).catch(() => {});
+$('signOutLink').onclick = async (e) => {
+  e.preventDefault();
+  await fetch('/api/logout', { method: 'POST' });
+  location.reload();
 };
 
 const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
@@ -397,6 +421,7 @@ $('lobbyForm').onsubmit = async (e) => {
   resumeAudio();
   $('joinBtn').disabled = true;
   await previewReady; // so the call starts with the filtered mic
+  await meReady;
   join();
 };
 
@@ -423,6 +448,7 @@ function join() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   state.ws = new WebSocket(`${proto}://${location.host}/ws`);
   state.ws.onopen = () => signal({ type: 'join', room, name: state.myName });
+  state.joinMsg = { type: 'join', room, name: state.myName };
   state.ws.onmessage = (e) => onSignal(JSON.parse(e.data));
   state.ws.onclose = () => { if (!state.ended) endSession('lost'); };
 }
@@ -515,11 +541,19 @@ function removePeer(id) {
 
 async function onSignal(msg) {
   switch (msg.type) {
+    case 'not-started':
+      // The room opens when the host joins; keep asking until then.
+      $('emptyTitle').textContent = 'Waiting for the host to start this meeting';
+      setStatus('Waiting for the host');
+      clearTimeout(state.retryJoin);
+      state.retryJoin = setTimeout(() => signal(state.joinMsg), 3000);
+      break;
     case 'full':
       $('emptyTitle').textContent = 'This room is full';
       setStatus(`Room full (${msg.max} people max)`, 'failed');
       break;
     case 'joined':
+      $('emptyTitle').textContent = 'Waiting for others to join';
       state.myId = msg.id;
       state.isHost = !!msg.host;
       state.hostId = msg.hostId;

@@ -215,6 +215,15 @@
     <menu><a href="#" id="pairingCodeLink" class="muted small">Use a pairing code</a><span class="spacer"></span><button id="cancelHelperBtn" class="btn" type="button">Cancel</button></menu>
   </dialog>
 
+  <dialog id="pointerHelperDialog">
+    <h2>See their pointer on your screen</h2>
+    <p><b class="peer-name"></b> is pointing at your shared screen. To see where, open <b>DevAssist Helper</b>. It runs without installing and stops when you close it.</p>
+    <a id="pointerHelperDownload" class="btn primary block" href="#" download>Download</a>
+    <p class="waiting"><span class="spinner"></span>Waiting for the helper to open…</p>
+    <p class="muted small">If your browser asks to let this site reach apps on your device, choose Allow.</p>
+    <menu><button id="pointerHelperLater" class="btn" type="button">Not now</button></menu>
+  </dialog>
+
   <dialog id="typeDialog">
     <form id="typeForm" method="dialog">
       <h2>Type on their computer</h2>

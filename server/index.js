@@ -51,44 +51,43 @@ app.get('/download/:os', async (req, res) => {
   }
 });
 
-// ---------- Transcript (Groq) ----------
+// ---------- Transcript (xAI) ----------
 // Each person sends short clips of their own mic here and we pass them to
-// Groq's hosted Whisper, so the API key never reaches the browser. Only people
+// xAI's speech-to-text (Grok Voice Transcribe), so the API key never reaches
+// the browser. Only people
 // currently in a call can use it (they get a token when they join), and each
 // is rate limited. Nothing is stored.
-const GROQ_KEY = process.env.GROQ_API_KEY;
-const GROQ_URL = process.env.GROQ_URL || 'https://api.groq.com/openai/v1/audio/transcriptions';
-const GROQ_MODEL = process.env.GROQ_MODEL || 'whisper-large-v3-turbo';
+const XAI_KEY = process.env.XAI_API_KEY;
+const XAI_URL = process.env.XAI_STT_URL || 'https://api.x.ai/v1/stt';
+const XAI_MODEL = process.env.XAI_STT_MODEL || 'grok-voice-transcribe-2.0';
 const CLIPS_PER_MINUTE = 40;
 /** token -> the person's socket, while they are in a call */
 const callers = new Map();
 app.post('/api/transcribe', express.raw({ type: 'audio/wav', limit: '2mb' }), async (req, res) => {
   const ws = callers.get(req.get('x-token'));
   if (!ws) return res.status(403).json({ error: 'Not in a call' });
-  if (!GROQ_KEY) return res.status(503).json({ error: 'Groq is not set up on this server' });
+  if (!XAI_KEY) return res.status(503).json({ error: 'xAI transcription is not set up on this server' });
   if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'No audio' });
   const now = Date.now();
   ws.clips = (ws.clips || []).filter((t) => now - t < 60_000);
   if (ws.clips.length >= CLIPS_PER_MINUTE) return res.status(429).json({ error: 'Too many clips' });
   ws.clips.push(now);
   const form = new FormData();
-  form.append('file', new Blob([req.body], { type: 'audio/wav' }), 'clip.wav');
-  form.append('model', GROQ_MODEL);
-  form.append('response_format', 'json');
-  form.append('temperature', '0');
+  form.append('model', XAI_MODEL);
   const lang = String(req.query.lang || '');
   if (/^[a-z]{2}$/.test(lang)) form.append('language', lang);
+  form.append('file', new Blob([req.body], { type: 'audio/wav' }), 'clip.wav'); // xAI wants the file last
   try {
-    const r = await fetch(GROQ_URL, { method: 'POST', headers: { Authorization: `Bearer ${GROQ_KEY}` }, body: form });
+    const r = await fetch(XAI_URL, { method: 'POST', headers: { Authorization: `Bearer ${XAI_KEY}` }, body: form });
     const out = await r.json().catch(() => ({}));
     if (!r.ok) {
-      console.error('groq transcribe failed:', r.status, out.error?.message || '');
-      return res.status(502).json({ error: 'Groq could not transcribe this clip' });
+      console.error('xai transcribe failed:', r.status, JSON.stringify(out.error || out).slice(0, 300));
+      return res.status(502).json({ error: 'xAI could not transcribe this clip' });
     }
     res.json({ text: String(out.text || '') });
   } catch (err) {
-    console.error('groq transcribe failed:', err.message);
-    res.status(502).json({ error: 'Groq is unreachable' });
+    console.error('xai transcribe failed:', err.message);
+    res.status(502).json({ error: 'xAI is unreachable' });
   }
 });
 
@@ -164,7 +163,7 @@ wss.on('connection', (ws) => {
       room = r;
       const others = [...r.peers].map((p) => ({ id: p.peerId, name: p.displayName }));
       r.peers.add(ws);
-      send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, groq: !!GROQ_KEY });
+      send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY });
       for (const p of r.peers) if (p !== ws) send(p, { type: 'peer-joined', id: ws.peerId, name: ws.displayName });
       return;
     }

@@ -13,13 +13,17 @@
     <symbol id="i-logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="var(--accent)" stroke="none"/><path d="M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z" fill="#fff" stroke="none"/></symbol>
   </svg>
   <header class="admin-head">
-    <div class="brand"><svg class="logo"><use href="#i-logo"/></svg>DevAssist <span class="muted">Admin</span></div>
+    <div class="brand"><svg class="logo"><use href="#i-logo"/></svg>DevAssist</div>
+    <nav class="admin-nav">
+      <a href="#dashboard" data-view="dashboard">Dashboard</a>
+      <a href="#profile" data-view="profile">Profile</a>
+    </nav>
     <span class="spacer"></span>
     <a class="btn primary sm" href="/">Start a call</a>
     <button id="signOut" class="btn sm" type="button">Sign out</button>
   </header>
 
-  <main class="admin-main">
+  <main id="dashboard" class="admin-main">
     <section class="cards">
       <div class="card"><span class="muted small">Open now</span><b id="kOpen">–</b><span id="kOpenSub" class="muted small"></span></div>
       <div class="card"><span class="muted small">Meetings, last 30 days</span><b id="kMeetings">–</b><span id="kMinutes" class="muted small"></span></div>
@@ -30,7 +34,7 @@
     <section class="panel">
       <h2>Open meetings</h2>
       <div class="table-wrap"><table>
-        <thead><tr><th>Room</th><th>Started</th><th>Length</th><th>People</th><th>Transcribed</th></tr></thead>
+        <thead><tr><th>Room</th><th>Started</th><th>Length</th><th>People</th><th>Transcribed</th><th>Transcript</th></tr></thead>
         <tbody id="openRows"></tbody>
       </table></div>
       <p id="openEmpty" class="muted small" hidden>No meetings are open right now.</p>
@@ -48,15 +52,27 @@
     <section class="panel">
       <h2>Recent meetings</h2>
       <div class="table-wrap"><table>
-        <thead><tr><th>Room</th><th>Started</th><th>Length</th><th>People</th><th>Transcribed</th></tr></thead>
+        <thead><tr><th>Room</th><th>Started</th><th>Length</th><th>People</th><th>Transcribed</th><th>Transcript</th></tr></thead>
         <tbody id="recentRows"></tbody>
       </table></div>
       <p id="recentEmpty" class="muted small" hidden>No finished meetings yet.</p>
     </section>
 
+  </main>
+
+  <main id="profile" class="admin-main narrow" hidden>
     <section class="panel">
-      <h2>Your account</h2>
-      <p id="account" class="muted small"></p>
+      <h2>Profile</h2>
+      <form id="profileForm" class="pw-form">
+        <label class="field"><span>Display name <span class="muted">(your name in calls)</span></span><input id="pfDisplay" maxlength="40" autocomplete="name"></label>
+        <label class="field"><span>Username</span><input id="pfUsername" required minlength="3" maxlength="32" autocomplete="username" autocapitalize="off"></label>
+        <label class="field"><span>Email</span><input id="pfEmail" type="email" required autocomplete="email"></label>
+        <button class="btn primary" type="submit">Save profile</button>
+        <p id="pfMsg" class="small" hidden></p>
+      </form>
+    </section>
+    <section class="panel">
+      <h2>Password</h2>
       <form id="pwForm" class="pw-form">
         <label class="field"><span>Current password</span><input id="pwCurrent" type="password" autocomplete="current-password" required></label>
         <label class="field"><span>New password</span><input id="pwNext" type="password" autocomplete="new-password" minlength="10" required></label>
@@ -64,7 +80,18 @@
         <p id="pwMsg" class="small" hidden></p>
       </form>
     </section>
+    <p class="muted small">This is the only account. New accounts can't be created yet.</p>
   </main>
+
+  <dialog id="txDialog" class="tx-dialog">
+    <header class="tx-dialog-head">
+      <div><h2 id="txTitle">Transcript</h2><p id="txMeta" class="muted small"></p></div>
+      <span class="spacer"></span>
+      <button id="txDl" class="btn sm" type="button">Download</button>
+      <button id="txClose" class="btn sm" type="button">Close</button>
+    </header>
+    <div id="txBody" class="tx-body"></div>
+  </dialog>
   <script src="/admin.js"></script>
 </body>
 </html>

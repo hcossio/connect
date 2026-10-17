@@ -302,6 +302,16 @@ textarea { resize: none; }
 .msg.system { justify-content: center; margin: 6px 0; }
 .msg.system .body { color: var(--muted); font-size: 13px; text-align: center; }
 
+.file-card { display: grid; gap: 6px; min-width: 200px; }
+.file-card img { display: block; max-width: 100%; max-height: 220px; border-radius: 8px; object-fit: cover; }
+.file-row { display: flex; align-items: center; gap: 10px; }
+.file-info { display: grid; min-width: 0; flex: 1; }
+.file-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-size { font-size: 12px; color: var(--muted); }
+.file-size.failed { color: var(--danger); }
+.file-dl { width: 32px; height: 32px; flex: none; color: var(--text); }
+.chat.drop { outline: 2px dashed var(--accent); outline-offset: -6px; }
+
 /* New messages float over the call while the chat is closed. */
 .chat-pops {
   position: absolute; right: 16px; bottom: 16px; z-index: 6; display: grid; gap: 8px; justify-items: end;
@@ -365,6 +375,8 @@ textarea { resize: none; }
 .composer { display: flex; align-items: flex-end; gap: 8px; padding: 10px; border-top: 1px solid var(--line); }
 .composer textarea { max-height: 160px; font: 14px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
 .composer .icon-btn { width: 42px; height: 42px; flex: none; }
+.composer #attachBtn { width: 34px; color: var(--muted); }
+.composer #attachBtn:hover { color: var(--text); }
 
 /* ---------- Control bar ---------- */
 .controls {
@@ -488,3 +500,22 @@ body.admin { overflow: auto; }
 .pw-form { display: grid; gap: 12px; max-width: 360px; }
 .pw-form .btn { justify-self: start; }
 .field input { width: 100%; }
+
+.admin-nav { display: flex; gap: 4px; margin-left: 16px; }
+.admin-nav a { padding: 6px 12px; border-radius: 8px; color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; }
+.admin-nav a:hover { color: var(--text); }
+.admin-nav a.active { background: var(--surface-2); color: var(--text); }
+.admin-main.narrow { max-width: 560px; }
+button.link { border: 0; padding: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
+button.link:hover { text-decoration: underline; }
+.tx-dialog { width: min(760px, calc(100% - 32px)); max-height: calc(100% - 64px); padding: 0; display: grid; grid-template-rows: auto 1fr; }
+.tx-dialog:not([open]) { display: none; }
+.tx-dialog-head { display: flex; align-items: flex-start; gap: 8px; padding: 18px 20px 12px; border-bottom: 1px solid var(--line); }
+.tx-dialog-head p { margin: 0; }
+.tx-body { overflow-y: auto; padding: 12px 20px 20px; }
+.tx-body p { display: grid; gap: 2px; margin: 0 0 12px; line-height: 1.5; }
+.tx-who { display: flex; gap: 8px; align-items: baseline; }
+@media (max-width: 640px) {
+  .admin-head { flex-wrap: wrap; }
+  .admin-nav { order: 3; width: 100%; margin: 4px 0 0; }
+}

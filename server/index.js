@@ -3,6 +3,8 @@
 // media never touches this server.
 const path = require('path');
 const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
 const http = require('http');
 const express = require('express');
 const { WebSocketServer } = require('ws');
@@ -102,7 +104,9 @@ app.post('/api/transcribe', express.raw({ type: 'audio/wav', limit: '2mb' }), as
 const XAI_PRICE_PER_HOUR = Number(process.env.XAI_PRICE_PER_HOUR || 0.10);
 app.get('/api/admin/stats', auth.requireAdmin, (_req, res) => {
   const open = [...new Set(rooms.values())].map((r) => ({
+    id: r.meeting.id,
     room: r.meeting.room,
+    transcriptLines: r.meeting.transcript?.lines.length || 0,
     startedAt: r.meeting.startedAt,
     by: r.meeting.by,
     host: r.host.displayName,
@@ -117,8 +121,77 @@ app.get('/api/admin/stats', auth.requireAdmin, (_req, res) => {
   }
   const today = days[days.length - 1];
   for (const m of open) today.minutes += (Date.now() - Math.max(m.startedAt, Date.parse(today.day))) / 60_000; // still running
-  const recent = store.data.meetings.filter((m) => m.endedAt).slice(-50).reverse();
+  const recent = store.data.meetings.filter((m) => m.endedAt).slice(-50).reverse()
+    .map(({ transcript, ...m }) => ({ ...m, transcriptLines: transcript?.lines.length || 0 }));
   res.json({ open, days, recent, pricePerHour: XAI_PRICE_PER_HOUR, cloud: !!XAI_KEY });
+});
+
+// ---------- Temporary files ----------
+// Files shared in a meeting's chat are kept on disk only while the meeting is
+// open, and only people in that meeting can download them.
+const MAX_FILE_MB = Number(process.env.MAX_FILE_MB || 25);
+const FILE_DIR = path.join(os.tmpdir(), 'devassist-files');
+fs.rmSync(FILE_DIR, { recursive: true, force: true }); // left over from before a restart
+fs.mkdirSync(FILE_DIR, { recursive: true });
+/** id -> { room, name, type, size, path } */
+const files = new Map();
+const roomOf = (token) => callers.get(token)?.room;
+
+app.post('/api/files', express.raw({ type: () => true, limit: `${MAX_FILE_MB}mb` }), (req, res) => {
+  const ws = callers.get(req.get('x-token'));
+  if (!ws?.room) return res.status(403).json({ error: 'Not in a call' });
+  if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'Empty file' });
+  const id = crypto.randomUUID();
+  const name = String(req.query.name || 'file').replace(/[\\/\0-\x1f]/g, '_').slice(0, 200) || 'file';
+  const type = /^[\w.+-]+\/[\w.+-]+$/.test(req.get('content-type') || '') ? req.get('content-type') : 'application/octet-stream';
+  const file = { room: ws.room, name, type, size: req.body.length, path: path.join(FILE_DIR, id) };
+  fs.writeFileSync(file.path, req.body);
+  files.set(id, file);
+  ws.room.files.add(id);
+  res.json({ id, name, type, size: file.size });
+});
+app.use('/api/files', (err, _req, res, next) => {
+  if (err?.type === 'entity.too.large') return res.status(413).json({ error: `Files can be up to ${MAX_FILE_MB} MB` });
+  next(err);
+});
+app.get('/files/:id/:name', (req, res) => {
+  const file = files.get(req.params.id);
+  if (!file || roomOf(String(req.query.t || '')) !== file.room) return res.status(404).send('This file is gone. Files are only kept while the meeting is open.');
+  res.setHeader('Content-Type', file.type);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+  // Images open inline (for previews); everything else downloads.
+  const inline = /^image\/(png|jpeg|gif|webp)$/.test(file.type) && req.query.dl !== '1';
+  res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.name)}`);
+  fs.createReadStream(file.path).pipe(res);
+});
+function dropFiles(room) {
+  for (const id of room.files) {
+    const f = files.get(id);
+    if (f) fs.rm(f.path, { force: true }, () => {});
+    files.delete(id);
+  }
+  room.files.clear();
+}
+
+// ---------- Saved transcripts ----------
+// The meeting's host can save the transcript to the meeting; the admin page shows it.
+app.post('/api/transcript', express.json({ limit: '2mb' }), (req, res) => {
+  const ws = callers.get(req.get('x-token'));
+  if (!ws?.room) return res.status(403).json({ error: 'Not in a call' });
+  if (ws.room.host !== ws) return res.status(403).json({ error: 'Only the meeting host can save the transcript' });
+  const lines = (Array.isArray(req.body?.lines) ? req.body.lines : []).slice(0, 5000).map((l) => ({
+    name: String(l?.name || '').slice(0, 40), text: String(l?.text || '').slice(0, 2000), at: Number(l?.at) || 0,
+  })).filter((l) => l.text);
+  if (!lines.length) return res.status(400).json({ error: 'The transcript is empty' });
+  ws.room.meeting.transcript = { savedAt: Date.now(), by: ws.displayName, lines };
+  store.save();
+  res.json({ ok: true, lines: lines.length });
+});
+app.get('/api/admin/meetings/:id', auth.requireAdmin, (req, res) => {
+  const m = store.data.meetings.find((x) => x.id === req.params.id);
+  if (!m) return res.status(404).json({ error: 'No such meeting' });
+  res.json(m);
 });
 
 const server = http.createServer(app);
@@ -159,6 +232,7 @@ function endSession(room, reason, leaver) {
   clearTimeout(room.graceTimer);
   for (const [name, r] of rooms) if (r === room) rooms.delete(name);
   if (!room.meeting.endedAt) store.endMeeting(room.meeting);
+  dropFiles(room);
   for (const p of room.peers) {
     if (p === leaver) continue;
     send(p, { type: 'session-ended', reason, by: leaver?.displayName });
@@ -190,7 +264,7 @@ wss.on('connection', (ws, req) => {
       ws.token = crypto.randomUUID();
       callers.set(ws.token, ws);
       if (!r) {
-        r = { peers: new Set(), host: ws, checking: false };
+        r = { peers: new Set(), host: ws, checking: false, files: new Set() };
         r.meeting = { room: name, startedAt: Date.now(), by: ws.user.username, host: ws.displayName, names: [], peak: 0, clips: 0, audioSec: 0 };
         store.addMeeting(r.meeting);
         rooms.set(name, r);
@@ -198,6 +272,7 @@ wss.on('connection', (ws, req) => {
       }
       room = r;
       ws.meeting = r.meeting;
+      ws.room = r;
       if (!r.meeting.names.includes(ws.displayName) && r.meeting.names.length < 20) r.meeting.names.push(ws.displayName);
       r.meeting.peak = Math.max(r.meeting.peak, r.peers.size + 1);
       const others = [...r.peers].map((p) => ({ id: p.peerId, name: p.displayName }));

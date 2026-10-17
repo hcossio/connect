@@ -36,6 +36,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 function usage() { return (data.usage[today()] ||= { meetings: 0, minutes: 0, clips: 0, audioSec: 0 }); }
 
 function addMeeting(m) {
+  m.id = crypto.randomBytes(6).toString('hex');
   data.meetings.push(m);
   if (data.meetings.length > KEEP_MEETINGS) data.meetings.splice(0, data.meetings.length - KEEP_MEETINGS);
   usage().meetings++;

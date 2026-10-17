@@ -65,7 +65,15 @@ A language setting (any, English, Español) helps both engines when everyone spe
 
 Only a signed-in host can start a meeting. Guests join with the host's link or room code, and anyone who opens a link before the host arrives waits on a "Waiting for the host" screen until the meeting starts. There are no sign-ups. The one account is created from `ADMIN_USERNAME` (default `marcah`), `ADMIN_EMAIL` (default `hc@marcah.com`) and `ADMIN_PASSWORD`. You sign in at `/login` with the username or the email. You can change the password at `/admin`, and setting `ADMIN_PASSWORD` to a new value resets it, which is the way back in if you forget it. Changing the password signs out every other browser.
 
-`/admin` shows the meetings open right now (room, who's in it, how long it's been running, how much was transcribed), daily usage for the last 30 days, and the last 50 meetings. Transcription cost is estimated at `XAI_PRICE_PER_HOUR` (default $0.10 per hour of audio). Accounts, the meeting log and usage live in `store.json` under `DATA_DIR` (default `./data`). On Railway that is a volume mounted at `/data`, so they survive deploys.
+`/admin` shows the meetings open right now (room, who's in it, how long it's been running, how much was transcribed), daily usage for the last 30 days, and the last 50 meetings. Meetings with a saved transcript have a **View** link that opens it, with a download button. The **Profile** tab has your display name (filled in for you when you start a call), username, email and password. Transcription cost is estimated at `XAI_PRICE_PER_HOUR` (default $0.10 per hour of audio). Accounts, the meeting log and usage live in `store.json` under `DATA_DIR` (default `./data`). On Railway that is a volume mounted at `/data`, so they survive deploys.
+
+## Chat and files
+
+Chat messages are bubbles with the time and a copy button. The chat starts closed; new messages float over the call, and tapping one opens it. You can attach, drop or paste files up to `MAX_FILE_MB` (default 25 MB). They're stored on the server only while the meeting is open, deleted when it ends, and only people in that meeting can download them. Images show a preview.
+
+## Saved transcripts
+
+The meeting starter can press **Save** in the Transcript tab to keep the transcript with the meeting. Saving again replaces it. Saved transcripts are listed on the admin page.
 
 ## Noise filter
 

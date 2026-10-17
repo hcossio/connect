@@ -379,6 +379,7 @@ const meReady = fetch('/api/me').then((r) => r.json()).then(({ user }) => {
   $('hostSignIn').hidden = !!user || !!urlRoom;
   if (user) {
     $('signedInName').textContent = user.username;
+    if (user.displayName && !$('nameInput').value) $('nameInput').value = user.displayName;
     $('adminLink').hidden = user.role !== 'admin';
   } else if (!urlRoom) {
     $('lobbyTitle').textContent = 'Join a support call';
@@ -625,6 +626,11 @@ function broadcast(obj) { for (const id of peers.keys()) sendTo(id, obj); }
 function onData(p, m) {
   switch (m.t) {
     case 'chat': addMessage(p.name, m.text, 'theirs', p.id); break;
+    case 'file':
+      if (typeof m.id === 'string' && typeof m.name === 'string') {
+        addMessage(p.name, m.name, 'theirs', p.id, { id: m.id, name: m.name.slice(0, 200), size: Number(m.size) || 0, type: String(m.type || '') });
+      }
+      break;
     case 'screen-on':
       // The newest screen takes the stage. Its track may arrive before or
       // after this message; routeStreams sorts it out either way.
@@ -784,7 +790,7 @@ $('chatForm').onsubmit = (e) => {
 // Messages are bubbles: yours on the right, theirs on the left with their
 // name in their color, each with the time and a copy button. Multi-line text
 // (logs, commands) keeps a monospace font.
-function addMessage(who, text, kind, id) {
+function addMessage(who, text, kind, id, file) {
   const div = document.createElement('div');
   div.className = `msg ${kind}`;
   const body = document.createElement('div'); body.className = 'body'; body.textContent = text;
@@ -793,7 +799,7 @@ function addMessage(who, text, kind, id) {
   } else {
     const prev = $('messages').lastElementChild;
     const bubble = document.createElement('div'); bubble.className = 'bubble';
-    if (/\n/.test(text.trim())) bubble.classList.add('code');
+    if (/\n/.test(text.trim()) && !file) bubble.classList.add('code');
     // A run of messages from the same person shows the name only once.
     const sameRun = prev?.dataset.from === String(id ?? kind) && Date.now() - prev.sentAt < 120_000;
     if (kind === 'theirs' && !sameRun) {
@@ -807,7 +813,8 @@ function addMessage(who, text, kind, id) {
     copy.type = 'button'; copy.className = 'copy'; copy.title = 'Copy message'; copy.setAttribute('aria-label', 'Copy message');
     copy.innerHTML = '<svg class="icon sm"><use href="#i-copy"/></svg>';
     copy.onclick = () => copyText(text, copy);
-    bubble.append(body, meta, copy);
+    bubble.append(file ? fileCard(file) : body, meta);
+    if (!file) bubble.append(copy);
     div.append(bubble);
     div.dataset.from = String(id ?? kind);
     div.sentAt = Date.now();
@@ -819,9 +826,77 @@ function addMessage(who, text, kind, id) {
     state.unread += 1;
     $('unread').textContent = state.unread;
     $('unread').hidden = false;
-    popMessage(who, text, id);
+    popMessage(who, file ? `Sent a file: ${file.name}` : text, id);
+  }
+  return div;
+}
+
+// ---------- Files ----------
+// Files go up to our server and are kept only while the meeting is open;
+// the link works only for people in this meeting.
+const MAX_FILE_MB = 25;
+const fileUrl = (f, download) => `/files/${f.id}/${encodeURIComponent(f.name)}?t=${encodeURIComponent(tx.token)}${download ? '&dl=1' : ''}`;
+const fmtSize = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+function fileCard(f) {
+  const card = document.createElement('div');
+  card.className = 'file-card';
+  if (/^image\/(png|jpeg|gif|webp)$/.test(f.type) && f.id) {
+    const a = document.createElement('a'); a.href = fileUrl(f); a.target = '_blank'; a.rel = 'noopener';
+    const img = document.createElement('img'); img.src = fileUrl(f); img.alt = f.name; img.loading = 'lazy';
+    a.append(img);
+    card.append(a);
+  }
+  const row = document.createElement('div'); row.className = 'file-row';
+  row.innerHTML = '<svg class="icon"><use href="#i-file"/></svg>';
+  const info = document.createElement('div'); info.className = 'file-info';
+  const n = document.createElement('span'); n.className = 'file-name'; n.textContent = f.name;
+  const sz = document.createElement('span'); sz.className = 'file-size'; sz.textContent = fmtSize(f.size);
+  info.append(n, sz);
+  row.append(info);
+  if (f.id) {
+    const dl = document.createElement('a'); dl.className = 'icon-btn file-dl'; dl.href = fileUrl(f, true); dl.title = 'Download'; dl.setAttribute('aria-label', `Download ${f.name}`);
+    dl.innerHTML = '<svg class="icon sm"><use href="#i-download"/></svg>';
+    row.append(dl);
+  }
+  card.append(row);
+  return card;
+}
+function sendFiles(list) {
+  for (const file of list) {
+    if (file.size > MAX_FILE_MB * 1048576) { systemMessage(`${file.name} is too big. Files can be up to ${MAX_FILE_MB} MB.`); continue; }
+    if (!file.size) continue;
+    const msg = addMessage('You', file.name, 'mine', null, { name: file.name, size: file.size, type: file.type });
+    const sz = msg.querySelector('.file-size');
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `/api/files?name=${encodeURIComponent(file.name)}`);
+    xhr.setRequestHeader('X-Token', tx.token);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) sz.textContent = `Uploading ${Math.round((e.loaded / e.total) * 100)}%`; };
+    xhr.onload = () => {
+      let out = {};
+      try { out = JSON.parse(xhr.responseText); } catch {}
+      if (xhr.status !== 200) { sz.textContent = out.error || 'Upload failed'; sz.classList.add('failed'); return; }
+      const f = { id: out.id, name: out.name, size: out.size, type: out.type };
+      msg.querySelector('.file-card').replaceWith(fileCard(f));
+      broadcast({ t: 'file', ...f });
+    };
+    xhr.onerror = () => { sz.textContent = 'Upload failed'; sz.classList.add('failed'); };
+    xhr.send(file);
   }
 }
+$('attachBtn').onclick = () => $('fileInput').click();
+$('fileInput').onchange = () => { sendFiles([...$('fileInput').files]); $('fileInput').value = ''; };
+$('chat').addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); $('chat').classList.add('drop'); } });
+$('chat').addEventListener('dragleave', (e) => { if (!$('chat').contains(e.relatedTarget)) $('chat').classList.remove('drop'); });
+$('chat').addEventListener('drop', (e) => {
+  e.preventDefault();
+  $('chat').classList.remove('drop');
+  sendFiles([...e.dataTransfer.files]);
+});
+$('chatInput').addEventListener('paste', (e) => {
+  const list = [...e.clipboardData.files];
+  if (list.length) { e.preventDefault(); sendFiles(list); }
+});
 async function copyText(text, btn) {
   try { await navigator.clipboard.writeText(text); }
   catch { return toast('Could not copy'); }
@@ -1261,6 +1336,7 @@ function syncTranscriptUI() {
   $('ccBtn').hidden = !tx.on;
   $('ccBtn').classList.toggle('active', state.captions);
   $('txDownload').disabled = !tx.lines.length;
+  $('txSave').disabled = !tx.lines.length || tx.saving;
   for (const b of $$('.seg button')) b.setAttribute('aria-checked', String(b.dataset.engine === engine));
   $('engCloud').disabled = !tx.cloud;
   $('engCloud').title = tx.cloud ? '' : 'xAI isn\'t set up on this server (XAI_API_KEY)';
@@ -1458,6 +1534,7 @@ function addLine(name, text, at, mine, id) {
   const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
   box.insertBefore(el, box.querySelectorAll('.line')[i] || null);
   if (stick) box.scrollTop = box.scrollHeight;
+  $('txSave').textContent = 'Save';
   showCaption(id, mine ? 'You' : name, text);
   syncTranscriptUI();
 }
@@ -1497,6 +1574,23 @@ $('ccBtn').onclick = () => {
   state.captions = !state.captions;
   $('ccBtn').classList.toggle('active', state.captions);
   if (!state.captions) { $('captions').replaceChildren(); cc.id = null; }
+};
+
+$('txSave').onclick = async () => {
+  tx.saving = true;
+  syncTranscriptUI();
+  try {
+    const r = await fetch('/api/transcript', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Token': tx.token },
+      body: JSON.stringify({ lines: tx.lines.map(({ name, text, at }) => ({ name, text, at })) }),
+    });
+    const out = await r.json().catch(() => ({}));
+    toast(r.ok ? `Saved ${out.lines} lines with this meeting` : out.error || 'Could not save the transcript');
+    if (r.ok) $('txSave').textContent = 'Saved';
+  } catch { toast('Could not save the transcript'); }
+  tx.saving = false;
+  syncTranscriptUI();
 };
 
 $('txDownload').onclick = () => {

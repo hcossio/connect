@@ -110,6 +110,7 @@ input:focus, textarea:focus { border-color: #fff; }
 .ctrl:disabled { opacity: .35; cursor: default; }
 .ctrl.danger { background: var(--danger); border-color: var(--danger); color: #fff; width: 64px; border-radius: 999px; }
 .ctrl.danger:hover { background: var(--danger-hover); }
+.ctrl.danger .icon { width: 28px; height: 28px; }
 .ctrl .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .ctrl .icon.slash { left: 50%; transform: translate(-50%, -50%); }
 .ctrl .swatch { position: absolute; top: 7px; right: 7px; width: 9px; height: 9px; border-radius: 50%; background: var(--c, transparent); box-shadow: 0 0 0 2px #fff; }
@@ -136,9 +137,13 @@ input:focus, textarea:focus { border-color: #fff; }
 
 /* ---------- Lobby: your camera fills the screen ---------- */
 .lobby {
-  position: fixed; inset: 0; overflow: hidden;
-  background: #000 url(/img/bg-desktop.webp) center / cover no-repeat;
+  position: fixed; inset: 0; overflow: hidden; background: #000;
 }
+.lobby[data-cam="off"] { background: #000 url(/img/bg-desktop.webp) center / cover no-repeat; }
+/* While the camera starts: black with a spinner, so the photo doesn't flash. */
+.lobby .spinner.big { display: none; position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-width: 3px; }
+.lobby[data-cam="loading"] .spinner.big { display: block; }
+.lobby[data-cam="loading"] .preview-off { display: none; }
 .preview { position: absolute; inset: 0; }
 .preview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block; }
 /* Keep the words readable over a bright room. */
@@ -514,7 +519,7 @@ dialog.ask menu .btn { height: 52px; font-size: 16px; }
 /* ---------- Phone ---------- */
 @media (max-width: 640px) {
   :root { --gutter: 12px; --pad: 22px; }
-  .lobby { background-image: url(/img/bg-phone.webp); }
+  .lobby[data-cam="off"] { background-image: url(/img/bg-phone.webp); }
   .topnav { padding: calc(18px + env(safe-area-inset-top, 0px)) var(--pad) 18px; }
   .topnav .account { gap: 14px; font-size: 14px; }
   #signedInName { display: none; }
@@ -694,3 +699,28 @@ button.link:hover { color: var(--muted); }
 @keyframes rec-blink { 50% { opacity: .25; } }
 .tx-dialog.rec-dialog { grid-template-rows: auto auto; height: auto; width: min(1100px, calc(100% - 32px)); }
 .rec-dialog video { width: 100%; max-height: calc(100vh - 180px); background: #000; display: block; }
+
+/* ---------- Settings menu (gear in the dock) ---------- */
+.settings-menu {
+  position: absolute; z-index: 9; left: calc((100% - var(--chat-w)) / 2); bottom: calc(108px + var(--safe-b)); transform: translateX(-50%);
+  display: grid; gap: 2px; width: min(300px, calc(100% - 24px)); padding: 8px;
+  border-radius: 22px; background: rgba(16,16,16,.92); border: 1px solid var(--glass-line);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); animation: toast-in .15s ease-out;
+}
+.opt {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border: 0; border-radius: 14px;
+  background: transparent; color: #fff; font: inherit; font-size: 15px; text-align: left; cursor: pointer;
+}
+.opt:hover { background: rgba(255,255,255,.08); }
+.opt > span:not(.switch) { flex: 1; }
+.opt .off-icon, .opt.off .on-icon { display: none; }
+.opt.off .off-icon { display: block; }
+.switch { position: relative; width: 40px; height: 24px; flex: none; border-radius: 999px; background: #fff; transition: background .15s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 19px; width: 18px; height: 18px; border-radius: 50%; background: #000; transition: left .15s, background .15s; }
+.opt.off .switch, #ccBtn:not(.active) .switch { background: #3a3a3a; }
+.opt.off .switch::after, #ccBtn:not(.active) .switch::after { left: 3px; background: #a3a3a3; }
+/* The gear shows a dot while the call's sound is off on this device. */
+#settingsBtn.muted::after { content: ""; position: absolute; top: 4px; right: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px #000; }
+@media (max-width: 640px) {
+  .settings-menu { left: 50%; bottom: calc(80px + var(--safe-b)); }
+}

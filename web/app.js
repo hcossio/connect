@@ -709,7 +709,15 @@ function onData(p, m) {
       routeStreams(p);
       break;
     case 'control-request': onControlRequest(p); break;
-    case 'control-granted': if (state.controlPending === p.id) startControl(p); break;
+    case 'control-granted': if (state.controlPending === p.id) { state.remoteClipboard = !!m.clipboard; startControl(p); } break;
+    case 'clipboard':
+      if (state.controlling !== p.id || typeof m.text !== 'string') break;
+      navigator.clipboard.writeText(m.text).then(
+        () => toast(`Copied from ${p.name}'s computer`),
+        // Browsers only allow it while this window has focus; keep it in the chat to copy by hand.
+        () => addMessage(`${p.name}'s clipboard`, m.text.slice(0, 20_000), 'theirs', p.id),
+      );
+      break;
     case 'control-denied':
       if (state.controlPending !== p.id) break;
       state.controlPending = null;
@@ -1018,7 +1026,15 @@ function connectAgent(token) {
     catch { return resolve(false); }
     ws.onopen = () => {
       state.agent = ws;
+      state.agentInfo = {};
       ws.onclose = () => { state.agent = null; revokeControl(); };
+      ws.onmessage = (e) => {
+        let m;
+        try { m = JSON.parse(e.data); } catch { return; }
+        if (m.type === 'hello') state.agentInfo = m;
+        // Text copied on this computer while someone controls it goes to them.
+        if (m.type === 'clipboard' && state.controlGrantedTo && typeof m.text === 'string') sendTo(state.controlGrantedTo, { t: 'clipboard', text: m.text });
+      };
       resolve(true);
     };
     ws.onerror = () => resolve(false);
@@ -1088,7 +1104,7 @@ $('allowBtn').onclick = () => {
   }
   state.controlGrantedTo = id;
   agentSend({ type: 'control', on: true });
-  sendTo(id, { t: 'control-granted' });
+  sendTo(id, { t: 'control-granted', clipboard: !!state.agentInfo?.clipboard });
   fillName($('controlledBanner'), nameOf(id));
   $('controlledBanner').hidden = false;
   addMessage('', `${nameOf(id)} is controlling your computer.`, 'system');
@@ -1163,6 +1179,7 @@ function startControl(p) {
 }
 function stopControl() {
   stopRecording();
+  state.remoteClipboard = false;
   state.controlling = null;
   state.controlPending = null;
   screenEl.classList.remove('controlling');
@@ -1257,13 +1274,19 @@ screenEl.addEventListener('keyup', (ev) => {
   if (!state.controlling) return; ev.preventDefault();
   input({ type: 'keyup', key: ev.key, code: ev.code });
 });
-// Ctrl/Cmd+Shift+V types the helper's clipboard on the remote machine,
-// handy for pasting commands. (Plain Ctrl+V pastes the remote clipboard.)
+// Ctrl/Cmd+V pastes your clipboard on their computer (Helper 0.1.3 and
+// later put it on their clipboard and paste it; with older ones it pastes
+// theirs). Ctrl/Cmd+Shift+V types your clipboard instead, for places that
+// don't take a paste.
 screenEl.addEventListener('keydown', async (ev) => {
-  if (!state.controlling || !ev.shiftKey || !(ev.ctrlKey || ev.metaKey) || ev.key.toLowerCase() !== 'v') return;
+  if (!state.controlling || !(ev.ctrlKey || ev.metaKey) || ev.altKey || ev.key.toLowerCase() !== 'v') return;
+  if (!ev.shiftKey && !state.remoteClipboard) return;
   ev.stopImmediatePropagation();
+  ev.preventDefault();
+  const keydown = { type: 'keydown', key: ev.key, code: ev.code, ctrl: ev.ctrlKey, alt: false, shift: ev.shiftKey, meta: ev.metaKey };
   const text = await navigator.clipboard.readText().catch(() => '');
-  if (text) input({ type: 'text', text });
+  if (ev.shiftKey) { if (text) input({ type: 'text', text }); return; }
+  input(text ? { type: 'paste', text } : keydown);
 }, { capture: true });
 
 // ---------- Touch control ----------

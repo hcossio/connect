@@ -2,14 +2,16 @@
 // It listens on 127.0.0.1 only, accepts connections only from the DevAssist
 // web app's origins, and injects mouse and keyboard input while the web app
 // says control has been allowed. It also draws the call's pointers on this
-// screen in a transparent, click-through window. Closing the window or
+// screen in a transparent, click-through window, and while controlled it
+// shares the clipboard with the person controlling. Closing the window or
 // pressing Stop ends it.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
-use futures_util::StreamExt;
+use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use std::sync::{mpsc, Mutex};
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
@@ -50,6 +52,8 @@ enum Event {
     // Someone in the call pointing at this screen; drawn by the overlay.
     Pointer { id: u32, name: String, color: String, x: f64, y: f64 },
     PointerOff { id: u32 },
+    // Put the controller's clipboard on this computer and paste it.
+    Paste { text: String },
 }
 
 // Last status, so the window can show it even if it was emitted before the page loaded.
@@ -153,7 +157,7 @@ fn inject(enigo: &mut Enigo, (w, h): (i32, i32), ev: Event) -> Result<(), enigo:
             for m in mods.iter().rev() { enigo.key(*m, Direction::Release)?; }
             r
         }
-        Event::Keyup {} | Event::Control { .. } | Event::Pointer { .. } | Event::PointerOff { .. } => Ok(()),
+        Event::Keyup {} | Event::Control { .. } | Event::Pointer { .. } | Event::PointerOff { .. } | Event::Paste { .. } => Ok(()),
     }
 }
 
@@ -166,6 +170,53 @@ fn input_thread(rx: mpsc::Receiver<Event>) {
         // Re-read each time so a resolution change mid-session still maps correctly.
         let size = enigo.main_display().unwrap_or((1920, 1080));
         if let Err(e) = inject(&mut enigo, size, ev) { eprintln!("input error: {e}"); }
+    }
+}
+
+// ---------- Clipboard ----------
+// While controlled, text copied on this computer is sent to the controller,
+// and text they paste is put on this clipboard first. Nothing is read or sent
+// when nobody is controlling.
+
+enum Clip {
+    Watch(bool),
+    Paste(String),
+}
+
+const MAX_CLIP: usize = 100_000;
+
+fn clipboard_thread(rx: mpsc::Receiver<Clip>, out: tokio::sync::mpsc::UnboundedSender<String>, input: mpsc::Sender<Event>) {
+    let mut cb = match arboard::Clipboard::new() {
+        Ok(c) => c,
+        Err(e) => { eprintln!("no clipboard: {e}"); return; }
+    };
+    let mut watching = false;
+    let mut last = String::new();
+    loop {
+        match rx.recv_timeout(Duration::from_millis(700)) {
+            Ok(Clip::Watch(on)) => {
+                watching = on;
+                last = cb.get_text().unwrap_or_default(); // what was there before isn't shared
+            }
+            Ok(Clip::Paste(text)) => {
+                let text: String = text.chars().take(MAX_CLIP).collect();
+                if cb.set_text(text.clone()).is_ok() {
+                    last = text;
+                    std::thread::sleep(Duration::from_millis(60)); // let the clipboard settle before pasting
+                    let mac = cfg!(target_os = "macos");
+                    let _ = input.send(Event::Keydown { key: "v".into(), code: "KeyV".into(), ctrl: !mac, alt: false, shift: false, meta: mac });
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if !watching { continue; }
+                let Ok(text) = cb.get_text() else { continue };
+                if text != last {
+                    last = text.clone();
+                    if !text.is_empty() && text.len() <= MAX_CLIP { let _ = out.send(text); }
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+        }
     }
 }
 
@@ -212,6 +263,11 @@ fn show_overlay(app: &AppHandle, on: bool) {
 // ---------- Local WebSocket server ----------
 
 async fn serve(app: AppHandle, input: mpsc::Sender<Event>) {
+    let (clip, clip_rx) = mpsc::channel();
+    let (copied_tx, mut copied) = tokio::sync::mpsc::unbounded_channel();
+    let clip_input = input.clone();
+    std::thread::spawn(move || clipboard_thread(clip_rx, copied_tx, clip_input));
+
     let listener = match TcpListener::bind(("127.0.0.1", PORT)).await {
         Ok(l) => l,
         Err(_) => return status(&app, "error", "Another DevAssist Helper is already running."),
@@ -233,13 +289,27 @@ async fn serve(app: AppHandle, input: mpsc::Sender<Event>) {
                 Err(err)
             }
         };
-        let Ok(mut ws) = tokio_tungstenite::accept_hdr_async(stream, check).await else { continue };
+        let Ok(ws) = tokio_tungstenite::accept_hdr_async(stream, check).await else { continue };
+        let (mut sink, mut ws) = ws.split();
+        // Tells the web app what this version can do.
+        let hello = serde_json::json!({ "type": "hello", "version": env!("CARGO_PKG_VERSION"), "clipboard": true });
+        let _ = sink.send(Message::Text(hello.to_string())).await;
 
         // One session at a time: handle it here before accepting the next.
         status(&app, "connected", &format!("Connected to {origin}. Nobody is controlling this computer."));
         let mut controlled = false;
         let mut overlay = false;
-        while let Some(Ok(msg)) = ws.next().await {
+        loop {
+            let msg = tokio::select! {
+                msg = ws.next() => msg,
+                Some(text) = copied.recv() => {
+                    if controlled {
+                        let _ = sink.send(Message::Text(serde_json::json!({ "type": "clipboard", "text": text }).to_string())).await;
+                    }
+                    continue;
+                }
+            };
+            let Some(Ok(msg)) = msg else { break };
             let Message::Text(text) = msg else { continue };
             let Ok(ev) = serde_json::from_str::<Event>(&text) else { continue };
             match ev {
@@ -257,16 +327,19 @@ async fn serve(app: AppHandle, input: mpsc::Sender<Event>) {
                 }
                 Event::Control { on } => {
                     controlled = on;
+                    let _ = clip.send(Clip::Watch(on));
                     if on {
                         status(&app, "controlled", "Your helper is controlling this computer.");
                     } else {
                         status(&app, "connected", "Control ended. You are in control.");
                     }
                 }
+                Event::Paste { text } if controlled => { let _ = clip.send(Clip::Paste(text)); }
                 ev if controlled => { let _ = input.send(ev); }
                 _ => {}
             }
         }
+        if controlled { let _ = clip.send(Clip::Watch(false)); }
         if overlay {
             show_overlay(&app, false);
         }

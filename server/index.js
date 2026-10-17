@@ -107,6 +107,8 @@ app.get('/api/admin/stats', auth.requireAdmin, (_req, res) => {
   const open = [...new Set(rooms.values())].map((r) => ({
     id: r.meeting.id,
     room: r.meeting.room,
+    title: r.meeting.title,
+    waiting: r.waiting.size,
     transcriptLines: r.meeting.transcript?.lines.length || 0,
     startedAt: r.meeting.startedAt,
     by: r.meeting.by,
@@ -214,6 +216,45 @@ app.post('/api/admin/meetings/:id/summary', auth.requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Scheduled meetings ----------
+// The host schedules a meeting and sends its link. Before it starts, guests
+// see its title and time; it opens when the host joins.
+const json = express.json({ limit: '10kb' });
+const scheduledFor = (room) => store.data.scheduled.find((s) => s.room === room);
+app.get('/api/admin/scheduled', auth.requireAdmin, (_req, res) => {
+  const cutoff = Date.now() - 86_400_000; // keep yesterday's around in case one runs late
+  res.json(store.data.scheduled.filter((s) => s.at > cutoff).sort((a, b) => a.at - b.at));
+});
+app.post('/api/admin/scheduled', auth.requireAdmin, json, (req, res) => {
+  const title = String(req.body?.title || '').trim().slice(0, 80);
+  const at = Number(req.body?.at);
+  if (!title) return res.status(400).json({ error: 'Give the meeting a title.' });
+  if (!Number.isFinite(at)) return res.status(400).json({ error: 'Pick a date and time.' });
+  const slug = title.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'meeting';
+  const s = {
+    id: crypto.randomBytes(6).toString('hex'),
+    room: `${slug}-${crypto.randomBytes(3).toString('hex')}`,
+    title, at,
+    minutes: Math.min(600, Math.max(5, Number(req.body?.minutes) || 30)),
+    waitingRoom: req.body?.waitingRoom !== false,
+    createdAt: Date.now(),
+  };
+  store.data.scheduled.push(s);
+  store.data.scheduled = store.data.scheduled.filter((x) => x.at > Date.now() - 30 * 86_400_000);
+  store.save();
+  res.json(s);
+});
+app.delete('/api/admin/scheduled/:id', auth.requireAdmin, (req, res) => {
+  store.data.scheduled = store.data.scheduled.filter((s) => s.id !== req.params.id);
+  store.save();
+  res.json({ ok: true });
+});
+// What the lobby shows for a room link.
+app.get('/api/rooms/:room', (req, res) => {
+  const s = scheduledFor(req.params.room);
+  res.json({ open: rooms.has(req.params.room), scheduled: s ? { title: s.title, at: s.at, minutes: s.minutes } : null });
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 
@@ -231,6 +272,11 @@ const GRACE_MS = Number(process.env.SESSION_GRACE_MINUTES || 5) * 60_000;
  */
 const rooms = new Map();
 let nextId = 1;
+
+const publicSchedule = (room) => { const s = scheduledFor(room); return s ? { title: s.title, at: s.at } : null; };
+// People who can let guests in from the waiting room: the host and anyone signed in.
+const admitters = (r) => [...r.peers].filter((p) => p === r.host || p.user);
+function knock(r, w) { for (const p of admitters(r)) send(p, { type: 'knock', id: w.peerId, name: w.displayName }); }
 
 function send(ws, msg) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
@@ -253,6 +299,8 @@ function endSession(room, reason, leaver) {
   for (const [name, r] of rooms) if (r === room) rooms.delete(name);
   if (!room.meeting.endedAt) store.endMeeting(room.meeting);
   dropFiles(room);
+  for (const w of room.waiting) { w.waitingFor = null; send(w, { type: 'not-started', scheduled: publicSchedule(room.meeting.room) }); }
+  room.waiting.clear();
   for (const p of room.peers) {
     if (p === leaver) continue;
     send(p, { type: 'session-ended', reason, by: leaver?.displayName });
@@ -268,37 +316,66 @@ wss.on('connection', (ws, req) => {
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
 
+  // Join the room for real: get a token and meet everyone in it.
+  function enter(r) {
+    ws.token = crypto.randomUUID();
+    callers.set(ws.token, ws);
+    room = r;
+    ws.meeting = r.meeting;
+    ws.room = r;
+    if (!r.meeting.names.includes(ws.displayName) && r.meeting.names.length < 20) r.meeting.names.push(ws.displayName);
+    r.meeting.peak = Math.max(r.meeting.peak, r.peers.size + 1);
+    const others = [...r.peers].map((p) => ({ id: p.peerId, name: p.displayName }));
+    r.peers.add(ws);
+    send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY, title: r.meeting.title, waitingRoom: r.waitingRoom });
+    for (const p of r.peers) if (p !== ws) send(p, { type: 'peer-joined', id: ws.peerId, name: ws.displayName });
+    // Someone who can admit people just arrived: show them who's waiting.
+    if (r.host === ws || ws.user) for (const w of r.waiting) send(ws, { type: 'knock', id: w.peerId, name: w.displayName });
+  }
+  ws.enter = enter; // whoever admits a waiting guest calls this
+
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
 
     if (msg.type === 'join') {
       const name = String(msg.room || '').slice(0, 64);
-      if (!name || room) return;
+      if (!name || room || ws.waitingFor) return;
       let r = rooms.get(name);
       // Only signed-in people start meetings; guests wait until one is open.
-      if (!r && !ws.user) return send(ws, { type: 'not-started' });
+      if (!r && !ws.user) return send(ws, { type: 'not-started', scheduled: publicSchedule(name) });
       if (r && r.peers.size >= MAX_PEERS) return send(ws, { type: 'full', max: MAX_PEERS });
       ws.displayName = String(msg.name || 'Guest').slice(0, 40);
-      ws.peerId = nextId++;
-      ws.token = crypto.randomUUID();
-      callers.set(ws.token, ws);
+      ws.peerId ||= nextId++;
       if (!r) {
-        r = { peers: new Set(), host: ws, checking: false, files: new Set() };
-        r.meeting = { room: name, startedAt: Date.now(), by: ws.user.username, host: ws.displayName, names: [], peak: 0, clips: 0, audioSec: 0 };
+        const sched = scheduledFor(name);
+        r = { peers: new Set(), host: ws, checking: false, files: new Set(), waiting: new Set(), waitingRoom: sched ? sched.waitingRoom : !!ws.user.waitingRoom };
+        r.meeting = { room: name, title: sched?.title, startedAt: Date.now(), by: ws.user.username, host: ws.displayName, names: [], peak: 0, clips: 0, audioSec: 0 };
         store.addMeeting(r.meeting);
         rooms.set(name, r);
         scheduleCheck(r);
       }
-      room = r;
-      ws.meeting = r.meeting;
-      ws.room = r;
-      if (!r.meeting.names.includes(ws.displayName) && r.meeting.names.length < 20) r.meeting.names.push(ws.displayName);
-      r.meeting.peak = Math.max(r.meeting.peak, r.peers.size + 1);
-      const others = [...r.peers].map((p) => ({ id: p.peerId, name: p.displayName }));
-      r.peers.add(ws);
-      send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY });
-      for (const p of r.peers) if (p !== ws) send(p, { type: 'peer-joined', id: ws.peerId, name: ws.displayName });
+      // Guests knock first when the meeting has a waiting room.
+      if (r.waitingRoom && !ws.user && r.peers.size) {
+        ws.waitingFor = r;
+        r.waiting.add(ws);
+        send(ws, { type: 'waiting', scheduled: publicSchedule(name) });
+        knock(r, ws);
+        return;
+      }
+      enter(r);
+      return;
+    }
+
+    if (msg.type === 'admit' && room) {
+      if (!admitters(room).includes(ws)) return;
+      const w = [...room.waiting].find((x) => x.peerId === msg.id);
+      if (!w) return;
+      room.waiting.delete(w);
+      w.waitingFor = null;
+      for (const p of admitters(room)) if (p !== ws) send(p, { type: 'knock-gone', id: w.peerId });
+      if (msg.allow) w.enter(room);
+      else { send(w, { type: 'denied' }); w.close(4001, 'denied'); }
       return;
     }
 
@@ -321,6 +398,12 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     callers.delete(ws.token);
+    if (ws.waitingFor) {
+      const r = ws.waitingFor;
+      r.waiting.delete(ws);
+      for (const p of admitters(r)) send(p, { type: 'knock-gone', id: ws.peerId });
+      return;
+    }
     if (!room || !room.peers.has(ws)) return;
     room.peers.delete(ws);
     if (!room.peers.size) return endSession(room, 'left', ws);
@@ -330,6 +413,7 @@ wss.on('connection', (ws, req) => {
       room.host = room.peers.values().next().value;
       for (const p of room.peers) send(p, { type: 'host', id: room.host.peerId });
       if (room.checking) send(room.host, { type: 'session-check' });
+      if (!room.host.user) for (const w of room.waiting) send(room.host, { type: 'knock', id: w.peerId, name: w.displayName });
     }
   });
 });

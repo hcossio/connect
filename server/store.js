@@ -16,6 +16,7 @@ data.secret ||= crypto.randomBytes(32).toString('hex');
 data.users ||= [];
 data.meetings ||= [];
 data.usage ||= {};
+data.scheduled ||= [];
 // Meetings that were open when the server last stopped ended then.
 for (const m of data.meetings) {
   if (!m.endedAt) { m.endedAt = m.lastSeen || m.startedAt; m.interrupted = true; }

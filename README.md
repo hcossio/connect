@@ -31,7 +31,7 @@ remote control of the helped person's computer.
 5. Either side can stop: the helper with **Release control**, the helped person with **Revoke control**, stopping the share, or **Stop and quit** in the helper window.
 
 Extras for dev work: chat renders in monospace (paste logs and commands), and
-**Ctrl/Cmd+Shift+V** while controlling types the helper's clipboard on the remote machine.
+**Clipboard while controlling** (DevAssist Helper 0.1.3 or later): **Ctrl/Cmd+V** puts your clipboard on their computer and pastes it, and anything they or you copy on their computer lands on your clipboard (if your browser window doesn't have focus at that moment, it shows up in the chat to copy). **Ctrl/Cmd+Shift+V** types your clipboard instead, for fields that block pasting. The clipboard is only shared while you are in control. With an older helper, Ctrl/Cmd+V pastes their own clipboard.
 
 ## Session lifetime
 

@@ -2,6 +2,7 @@
 // between the people in a room. Every pair connects directly (a mesh), so
 // media never touches this server.
 const path = require('path');
+const crypto = require('crypto');
 const http = require('http');
 const express = require('express');
 const { WebSocketServer } = require('ws');
@@ -47,6 +48,47 @@ app.get('/download/:os', async (req, res) => {
   } catch (err) {
     console.error('helper download failed:', err.message);
     res.status(502).send('The helper download is not available yet.');
+  }
+});
+
+// ---------- Transcript (Groq) ----------
+// Each person sends short clips of their own mic here and we pass them to
+// Groq's hosted Whisper, so the API key never reaches the browser. Only people
+// currently in a call can use it (they get a token when they join), and each
+// is rate limited. Nothing is stored.
+const GROQ_KEY = process.env.GROQ_API_KEY;
+const GROQ_URL = process.env.GROQ_URL || 'https://api.groq.com/openai/v1/audio/transcriptions';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'whisper-large-v3-turbo';
+const CLIPS_PER_MINUTE = 40;
+/** token -> the person's socket, while they are in a call */
+const callers = new Map();
+app.post('/api/transcribe', express.raw({ type: 'audio/wav', limit: '2mb' }), async (req, res) => {
+  const ws = callers.get(req.get('x-token'));
+  if (!ws) return res.status(403).json({ error: 'Not in a call' });
+  if (!GROQ_KEY) return res.status(503).json({ error: 'Groq is not set up on this server' });
+  if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'No audio' });
+  const now = Date.now();
+  ws.clips = (ws.clips || []).filter((t) => now - t < 60_000);
+  if (ws.clips.length >= CLIPS_PER_MINUTE) return res.status(429).json({ error: 'Too many clips' });
+  ws.clips.push(now);
+  const form = new FormData();
+  form.append('file', new Blob([req.body], { type: 'audio/wav' }), 'clip.wav');
+  form.append('model', GROQ_MODEL);
+  form.append('response_format', 'json');
+  form.append('temperature', '0');
+  const lang = String(req.query.lang || '');
+  if (/^[a-z]{2}$/.test(lang)) form.append('language', lang);
+  try {
+    const r = await fetch(GROQ_URL, { method: 'POST', headers: { Authorization: `Bearer ${GROQ_KEY}` }, body: form });
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      console.error('groq transcribe failed:', r.status, out.error?.message || '');
+      return res.status(502).json({ error: 'Groq could not transcribe this clip' });
+    }
+    res.json({ text: String(out.text || '') });
+  } catch (err) {
+    console.error('groq transcribe failed:', err.message);
+    res.status(502).json({ error: 'Groq is unreachable' });
   }
 });
 
@@ -112,6 +154,8 @@ wss.on('connection', (ws) => {
       if (r && r.peers.size >= MAX_PEERS) return send(ws, { type: 'full', max: MAX_PEERS });
       ws.displayName = String(msg.name || 'Guest').slice(0, 40);
       ws.peerId = nextId++;
+      ws.token = crypto.randomUUID();
+      callers.set(ws.token, ws);
       if (!r) {
         r = { peers: new Set(), host: ws, checking: false };
         rooms.set(name, r);
@@ -120,7 +164,7 @@ wss.on('connection', (ws) => {
       room = r;
       const others = [...r.peers].map((p) => ({ id: p.peerId, name: p.displayName }));
       r.peers.add(ws);
-      send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, peers: others });
+      send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, peers: others, token: ws.token, groq: !!GROQ_KEY });
       for (const p of r.peers) if (p !== ws) send(p, { type: 'peer-joined', id: ws.peerId, name: ws.displayName });
       return;
     }
@@ -137,6 +181,7 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    callers.delete(ws.token);
     if (!room || !room.peers.has(ws)) return;
     room.peers.delete(ws);
     if (!room.peers.size) return endSession(room, 'left', ws);

@@ -283,6 +283,47 @@ textarea { resize: none; }
 .msg.mine .body { background: #1d3a66; }
 .msg.system .body { font-family: inherit; background: transparent; color: var(--muted); padding: 0; font-size: 13px; text-align: center; }
 .msg.system { justify-items: center; }
+
+/* Chat / Transcript tabs share the side panel. */
+.tabs { display: flex; gap: 2px; padding: 2px; border-radius: 10px; background: var(--surface-2); flex: none; }
+.tab {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.tab.active { background: var(--surface-3); color: var(--text); }
+.rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: blink 1.6s infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+.chat.show-transcript .messages#messages, .chat.show-transcript .composer, .chat.show-transcript #chatHint { display: none; }
+.transcript { grid-row: 2 / 4; display: grid; grid-template-rows: auto auto auto 1fr auto; min-height: 0; }
+.tx-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px 0; }
+.tx-note { margin: 0; padding: 8px 12px 0; }
+#txStatus { padding: 8px 12px 10px; border-top: 1px solid var(--line); }
+.seg { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--surface-2); }
+.seg button {
+  padding: 5px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted);
+  font: inherit; font-size: 13px; cursor: pointer;
+}
+.seg button[aria-checked="true"] { background: var(--accent); color: #fff; }
+.seg button:disabled { opacity: .45; cursor: default; }
+.transcript select {
+  min-width: 0; flex: 1; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: 13px;
+}
+.line { display: grid; gap: 2px; }
+.line .who { font-size: 12px; color: var(--muted); }
+.line .who b { color: var(--text); font-weight: 600; margin-right: 6px; }
+.line .text { font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+
+/* Live captions over the stage while a transcript is running. */
+.captions {
+  position: absolute; left: 50%; bottom: 56px; transform: translateX(-50%); width: min(720px, calc(100% - 32px));
+  display: grid; gap: 4px; justify-items: center; pointer-events: none; z-index: 5;
+}
+.caption {
+  max-width: 100%; padding: 4px 12px; border-radius: 8px; background: rgba(0,0,0,.72); color: #fff;
+  font-size: 15px; line-height: 1.4; text-align: center; animation: toast-in .2s ease-out;
+}
+.caption b { font-weight: 600; opacity: .75; margin-right: 6px; }
 .composer { display: flex; align-items: flex-end; gap: 8px; padding: 10px; border-top: 1px solid var(--line); }
 .composer textarea { max-height: 160px; font: 14px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
 .composer .icon-btn { width: 42px; height: 42px; flex: none; }
@@ -371,6 +412,8 @@ dialog textarea { font: 14px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monos
   /* Chat becomes a full-screen sheet. */
   .chat { inset: 0; top: 0; right: 0; bottom: 0; width: 100%; border-radius: 0; border: 0; padding-bottom: var(--safe-b); }
   .chat header .hint { display: none; }
+  .captions { bottom: 150px; width: calc(100% - 24px); }
+  .caption { font-size: 13px; }
 
   .controls { gap: 4px; justify-content: space-between; }
   .ctrl { width: 44px; height: 44px; padding: 0; justify-content: center; flex: 0 1 44px; min-width: 34px; }

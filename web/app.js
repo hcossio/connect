@@ -460,6 +460,7 @@ function addPeer(id, name, initiator) {
   p.dc = pc.createDataChannel('app', { negotiated: true, id: 0 });
   p.dc.onopen = () => {
     if (state.screenStream) sendTo(id, { t: 'screen-on', streamId: state.screenStream.id });
+    if (tx.on) sendTo(id, { t: 'transcribe', on: true, already: true });
     updateControlBtn();
   };
   p.dc.onmessage = (e) => onData(p, JSON.parse(e.data));
@@ -521,6 +522,9 @@ async function onSignal(msg) {
       state.myId = msg.id;
       state.isHost = !!msg.host;
       $('myColor').style.setProperty('--c', colorOf(msg.id));
+      tx.token = msg.token;
+      tx.groq = !!msg.groq;
+      syncTranscriptUI();
       for (const o of msg.peers) addPeer(o.id, o.name, true);
       updateStage();
       updateStatus();
@@ -610,6 +614,8 @@ function onData(p, m) {
       break;
     case 'input': if (state.controlGrantedTo === p.id) agentSend(m.e); break;
     case 'pointer': onPointer(p, m); break;
+    case 'transcribe': setTranscribing(!!m.on, p, m.already); break;
+    case 'line': if (typeof m.text === 'string') addLine(p.name, m.text.slice(0, 2000), Number(m.at) || Date.now(), false); break;
   }
 }
 
@@ -674,6 +680,7 @@ function teardown() {
   state.ws?.close();
   for (const id of [...peers.keys()]) removePeer(id);
   state.camStream.getTracks().forEach((t) => t.stop());
+  stopCapture();
   stopNoise();
   pip?.close();
   document.title = TITLE;
@@ -1089,6 +1096,263 @@ function syncPointers() {
   if (pointerOn !== null && pointerOn !== state.shownId) sendPointer(null);
   for (const p of peers.values()) drawPointer(p);
 }
+
+// ---------- Transcript ----------
+// Anyone can start a transcript of the call. Each person then transcribes only
+// their own mic and shares the text, so every line carries the right name. Each
+// person picks where their voice is transcribed: Groq's hosted Whisper (fast and
+// accurate; clips go to Groq through our server) or Whisper on this device
+// (private; the model downloads once). Nothing is stored on the server.
+const SPEECH = {
+  threshold: 0.008, // RMS level that counts as speech (the noise filter has already removed most noise)
+  preRoll: 3,       // frames (100 ms each) kept from before speech starts
+  hangMs: 700,      // this much quiet ends a clip
+  maxMs: 20000,     // and clips never run longer than this
+  minMs: 400,       // clips with less speech than this are ignored
+};
+// Whisper's well-known inventions on silence or noise.
+const HALLUCINATIONS = /^(\[.*\]|\(.*\)|thanks for watching!?|thank you for watching\.?|subt[ií]tulos (realizados )?por .*|amara\.org.*)$/i;
+const tx = {
+  on: false, groq: false, token: null,
+  engine: 'groq', lang: '',
+  ctx: null, src: null, node: null,
+  pre: [], clip: null,
+  queue: Promise.resolve(), pending: 0,
+  worker: null, jobs: new Map(), nextJob: 1,
+  lines: [], // { name, text, at, mine }
+};
+try {
+  tx.engine = localStorage.getItem('devassist:engine') === 'device' ? 'device' : 'groq';
+  tx.lang = localStorage.getItem('devassist:lang') || '';
+} catch {}
+$('txLang').value = tx.lang;
+const engineNow = () => (tx.engine === 'groq' && !tx.groq ? 'device' : tx.engine);
+
+function showTab(which) {
+  const transcript = which === 'transcript';
+  $('chat').classList.toggle('show-transcript', transcript);
+  $('transcriptPane').hidden = !transcript;
+  $('chatTab').classList.toggle('active', !transcript);
+  $('transcriptTab').classList.toggle('active', transcript);
+  $('chatTab').setAttribute('aria-selected', String(!transcript));
+  $('transcriptTab').setAttribute('aria-selected', String(transcript));
+}
+$('chatTab').onclick = () => showTab('chat');
+$('transcriptTab').onclick = () => showTab('transcript');
+
+function syncTranscriptUI() {
+  const engine = engineNow();
+  $('txToggle').textContent = tx.on ? 'Stop transcript' : 'Start transcript';
+  $('txToggle').classList.toggle('primary', !tx.on);
+  $('txDot').hidden = !tx.on;
+  $('txDownload').disabled = !tx.lines.length;
+  for (const b of $$('.seg button')) b.setAttribute('aria-checked', String(b.dataset.engine === engine));
+  $('engGroq').disabled = !tx.groq;
+  $('engGroq').title = tx.groq ? '' : 'Groq isn\'t set up on this server (GROQ_API_KEY)';
+  $('txNote').textContent = engine === 'groq'
+    ? 'Your voice is sent to Groq to be transcribed. Fast and accurate.'
+    : 'Your voice stays on this computer. The speech model downloads once (about 80 to 200 MB) and is slower on older machines.';
+}
+for (const b of $$('.seg button')) b.onclick = () => {
+  if (b.disabled) return;
+  tx.engine = b.dataset.engine;
+  try { localStorage.setItem('devassist:engine', tx.engine); } catch {}
+  txStatus('');
+  syncTranscriptUI();
+};
+$('txLang').onchange = () => {
+  tx.lang = $('txLang').value;
+  try { localStorage.setItem('devassist:lang', tx.lang); } catch {}
+};
+function txStatus(text) {
+  $('txStatus').hidden = !text;
+  $('txStatus').textContent = text;
+}
+
+$('txToggle').onclick = () => {
+  const on = !tx.on;
+  broadcast({ t: 'transcribe', on });
+  setTranscribing(on, null);
+};
+// by: the person who switched it (null for us); already: it was on before we joined.
+function setTranscribing(on, by, already = false) {
+  if (tx.on === on) return;
+  tx.on = on;
+  const who = by ? by.name : 'You';
+  systemMessage(already ? 'This call is being transcribed.' : on ? `${who} started a transcript of the call.` : `${who} stopped the transcript.`);
+  if (on) startCapture(); else stopCapture();
+  syncTranscriptUI();
+}
+
+async function startCapture() {
+  const track = state.camStream.getAudioTracks()[0];
+  if (!track) return txStatus('No microphone here, so only the others are transcribed.');
+  try {
+    const ctx = new AudioContext();
+    await ctx.audioWorklet.addModule('/capture-worklet.js');
+    if (!tx.on) return ctx.close(); // stopped while loading
+    tx.ctx = ctx;
+    tx.src = ctx.createMediaStreamSource(new MediaStream([track]));
+    tx.node = new AudioWorkletNode(ctx, 'capture');
+    tx.node.port.onmessage = (e) => onSpeechFrame(e.data);
+    // Silent route to the speakers so the browser keeps pulling audio through.
+    const mute = ctx.createGain();
+    mute.gain.value = 0;
+    tx.src.connect(tx.node).connect(mute).connect(ctx.destination);
+    ctx.resume().catch(() => {});
+    txStatus('');
+  } catch (err) {
+    console.warn(err);
+    txStatus('Your mic can\'t be transcribed in this browser.');
+  }
+}
+function stopCapture() {
+  tx.ctx?.close().catch(() => {});
+  Object.assign(tx, { ctx: null, src: null, node: null, pre: [], clip: null });
+}
+addEventListener('pointerdown', () => tx.ctx?.state === 'suspended' && tx.ctx.resume().catch(() => {}), true);
+
+// Cut the mic into clips at pauses, so each one is a sentence or so.
+function onSpeechFrame(frame) {
+  let sum = 0;
+  for (const v of frame) sum += v * v;
+  const loud = Math.sqrt(sum / frame.length) > SPEECH.threshold;
+  const c = tx.clip;
+  if (!c) {
+    tx.pre.push(frame);
+    if (tx.pre.length > SPEECH.preRoll) tx.pre.shift();
+    if (loud) {
+      tx.clip = { frames: tx.pre, at: Date.now() - tx.pre.length * 100, voiced: 1, quiet: 0 };
+      tx.pre = [];
+    }
+    return;
+  }
+  c.frames.push(frame);
+  if (loud) { c.voiced++; c.quiet = 0; } else c.quiet++;
+  if (c.quiet * 100 < SPEECH.hangMs && c.frames.length * 100 < SPEECH.maxMs) return;
+  tx.clip = null;
+  if (c.voiced * 100 < SPEECH.minMs) return;
+  const frames = c.frames.slice(0, c.frames.length - Math.max(0, c.quiet - 2)); // keep a little trailing quiet
+  const audio = new Float32Array(frames.length * 1600);
+  frames.forEach((f, i) => audio.set(f, i * 1600));
+  transcribeClip(audio, c.at);
+}
+
+function transcribeClip(audio, at) {
+  const engine = engineNow();
+  if (tx.pending > 4) return; // falling behind: drop rather than lag further and further
+  tx.pending++;
+  tx.queue = tx.queue.then(async () => {
+    try {
+      const raw = engine === 'groq' ? await viaGroq(audio) : await viaDevice(audio);
+      const text = raw.trim().replace(/\s+/g, ' ');
+      if (!tx.on || !/\p{L}/u.test(text) || HALLUCINATIONS.test(text)) return;
+      addLine(state.myName, text, at, true);
+      broadcast({ t: 'line', text, at });
+    } catch (err) {
+      txStatus(err.message);
+    } finally { tx.pending--; }
+  });
+}
+
+async function viaGroq(audio) {
+  const r = await fetch(`/api/transcribe${tx.lang ? `?lang=${tx.lang}` : ''}`, {
+    method: 'POST', headers: { 'Content-Type': 'audio/wav', 'X-Token': tx.token || '' }, body: wav(audio),
+  });
+  const out = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`${out.error || 'Transcription failed'}. Switch to "This device" if it keeps happening.`);
+  if ($('txStatus').textContent) txStatus('');
+  return out.text || '';
+}
+// 16 kHz mono 16-bit PCM WAV.
+function wav(samples) {
+  const buf = new ArrayBuffer(44 + samples.length * 2), v = new DataView(buf);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + samples.length * 2, true); str(8, 'WAVE');
+  str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 16000, true); v.setUint32(28, 32000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, samples.length * 2, true);
+  samples.forEach((s, i) => v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, s)) * 0x7fff, true));
+  return buf;
+}
+
+function viaDevice(audio) {
+  if (!tx.worker) {
+    tx.worker = new Worker('/whisper-worker.js', { type: 'module' });
+    tx.worker.onmessage = ({ data: m }) => {
+      if (m.type === 'progress') txStatus(`Downloading the speech model… ${m.pct}%`);
+      else if (m.type === 'ready') txStatus('');
+      else {
+        const job = tx.jobs.get(m.id);
+        tx.jobs.delete(m.id);
+        if (m.type === 'text') job?.resolve(m.text);
+        else job?.reject(new Error(`On-device transcription failed (${m.message}).`));
+      }
+    };
+    tx.worker.onerror = (e) => {
+      for (const job of tx.jobs.values()) job.reject(new Error('The on-device speech model couldn\'t load. Try Groq, or check this browser can reach the internet.'));
+      tx.jobs.clear();
+      tx.worker = null;
+      e.preventDefault();
+    };
+    txStatus('Loading the speech model…');
+  }
+  return new Promise((resolve, reject) => {
+    const id = tx.nextJob++;
+    tx.jobs.set(id, { resolve, reject });
+    tx.worker.postMessage({ id, audio, language: tx.lang || null }, [audio.buffer]);
+  });
+}
+
+const timeOf = (at) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+function addLine(name, text, at, mine) {
+  const line = { name, text, at, mine };
+  // People's clips finish at different speeds; keep the transcript in speaking order.
+  let i = tx.lines.length;
+  while (i > 0 && tx.lines[i - 1].at > at) i--;
+  tx.lines.splice(i, 0, line);
+  const el = document.createElement('div');
+  el.className = 'line';
+  const who = document.createElement('div');
+  who.className = 'who';
+  const b = document.createElement('b');
+  b.textContent = mine ? `${name} (you)` : name;
+  who.append(b, timeOf(at));
+  const t = document.createElement('div');
+  t.className = 'text';
+  t.textContent = text;
+  el.append(who, t);
+  const box = $('transcriptLines');
+  const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  box.insertBefore(el, box.querySelectorAll('.line')[i] || null);
+  if (stick) box.scrollTop = box.scrollHeight;
+  showCaption(mine ? 'You' : name, text);
+  syncTranscriptUI();
+}
+
+function showCaption(name, text) {
+  const box = $('captions');
+  const el = document.createElement('div');
+  el.className = 'caption';
+  const b = document.createElement('b');
+  b.textContent = name;
+  el.append(b, text);
+  box.append(el);
+  while (box.children.length > 2) box.firstChild.remove();
+  setTimeout(() => el.remove(), 7000);
+}
+
+$('txDownload').onclick = () => {
+  const room = $('roomLabel').textContent;
+  const day = new Date(tx.lines[0]?.at || Date.now());
+  const body = `Transcript of ${room}, ${day.toLocaleDateString()}\n\n`
+    + tx.lines.map((l) => `[${timeOf(l.at)}] ${l.name}: ${l.text}`).join('\n') + '\n';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([body], { type: 'text/plain' }));
+  a.download = `transcript-${room}-${day.toISOString().slice(0, 10)}.txt`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
 
 // Show the chat panel again when a window grows back to desktop width.
 matchMedia('(min-width: 1025px)').addEventListener('change', (e) => {

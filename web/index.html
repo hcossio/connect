@@ -17,6 +17,7 @@
       <symbol id="i-share" viewBox="0 0 24 24"><path d="m9 10 3-3 3 3"/><path d="M12 13V7"/><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M12 17v4"/><path d="M8 21h8"/></symbol>
       <symbol id="i-pointer" viewBox="0 0 24 24"><path d="M12.6 12.6 19 19"/><path d="M3.7 3a.5.5 0 0 0-.7.7l6.5 16a.5.5 0 0 0 1-.1l1.5-6a2 2 0 0 1 1.5-1.5l6.1-1.6a.5.5 0 0 0 .1-1z"/></symbol>
       <symbol id="i-cursors" viewBox="0 0 24 24"><path d="M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.44l-1.58 6.12a.5.5 0 0 1-.95.06z"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></symbol>
       <symbol id="i-chat" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></symbol>
       <symbol id="i-leave" viewBox="0 0 24 24"><path d="M10.1 13.9a14 14 0 0 0 3.7 2.7 1 1 0 0 0 1.2-.3l.4-.5A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.5.4a1 1 0 0 0-.3 1.2l.3.5"/><path d="m2 2 20 20"/></symbol>
       <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
@@ -103,13 +104,17 @@
           <button id="revokeBtn" class="btn sm light" type="button">Stop</button>
         </div>
 
+        <div id="captions" class="captions" aria-live="polite"></div>
         <div id="toasts" class="toasts" aria-live="polite"></div>
       </div>
 
       <aside id="chat" class="chat" hidden>
         <header>
-          <b>Chat</b>
-          <span class="muted small hint">Shift+Enter for a new line</span>
+          <div class="tabs" role="tablist">
+            <button id="chatTab" class="tab active" type="button" role="tab" aria-selected="true">Chat</button>
+            <button id="transcriptTab" class="tab" type="button" role="tab" aria-selected="false">Transcript<span id="txDot" class="rec-dot" hidden></span></button>
+          </div>
+          <span id="chatHint" class="muted small hint">Shift+Enter for a new line</span>
           <span class="spacer"></span>
           <button id="closeChatBtn" class="icon-btn" type="button" aria-label="Close chat"><svg class="icon"><use href="#i-x"/></svg></button>
         </header>
@@ -120,6 +125,29 @@
           <textarea id="chatInput" rows="1" placeholder="Message" autocomplete="off"></textarea>
           <button class="icon-btn primary" type="submit" aria-label="Send"><svg class="icon"><use href="#i-send"/></svg></button>
         </form>
+        <div id="transcriptPane" class="transcript" hidden>
+          <div class="tx-bar">
+            <button id="txToggle" class="btn sm primary" type="button">Start transcript</button>
+            <span class="spacer"></span>
+            <button id="txDownload" class="icon-btn" type="button" title="Download transcript" aria-label="Download transcript" disabled><svg class="icon"><use href="#i-download"/></svg></button>
+          </div>
+          <div class="tx-bar">
+            <div class="seg" role="radiogroup" aria-label="Where your voice is transcribed">
+              <button id="engGroq" type="button" role="radio" data-engine="groq">Groq</button>
+              <button id="engDevice" type="button" role="radio" data-engine="device">This device</button>
+            </div>
+            <select id="txLang" aria-label="Spoken language">
+              <option value="">Any language</option>
+              <option value="en">English</option>
+              <option value="es">Español</option>
+            </select>
+          </div>
+          <p id="txNote" class="muted small tx-note"></p>
+          <div id="transcriptLines" class="messages">
+            <p class="muted small center">Everyone's words show up here with their name. Each person's voice is transcribed by their own choice above. Transcripts aren't saved; download one to keep it.</p>
+          </div>
+          <p id="txStatus" class="muted small tx-note" hidden></p>
+        </div>
       </aside>
     </main>
 

@@ -33,6 +33,12 @@ function transcriptCell(m) {
   b.onclick = () => openTranscript(m.id);
   return b;
 }
+function roomCell(m) {
+  if (!m.title) return m.room;
+  const d = document.createElement('div');
+  d.append(m.title, Object.assign(document.createElement('div'), { className: 'muted small', textContent: m.room }));
+  return d;
+}
 function fill(body, empty, rows) {
   $(body).replaceChildren(...rows.map(row));
   $(empty).hidden = rows.length > 0;
@@ -56,13 +62,13 @@ async function refresh() {
   $('kPrice').textContent = `At $${s.pricePerHour.toFixed(2)} per hour of audio`;
 
   const now = Date.now();
-  fill('openRows', 'openEmpty', s.open.map((m) => [m.room, fmtWhen(m.startedAt), fmtDuration(now - m.startedAt), m.people.join(', '), fmtAudio(m.audioSec), transcriptCell(m)]));
+  fill('openRows', 'openEmpty', s.open.map((m) => [roomCell(m), fmtWhen(m.startedAt), fmtDuration(now - m.startedAt), m.people.join(', ') + (m.waiting ? ` (${m.waiting} waiting)` : ''), fmtAudio(m.audioSec), transcriptCell(m)]));
   fill('dayRows', 'dayEmpty', s.days.filter((d) => d.meetings || d.minutes || d.clips).reverse().map((d) => [
     new Date(d.day + 'T12:00:00Z').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
     d.meetings, fmtDuration(d.minutes * 60_000), fmtAudio(d.audioSec), d.clips, fmtCost(cost(d.audioSec)),
   ]));
   fill('recentRows', 'recentEmpty', s.recent.map((m) => [
-    m.room, fmtWhen(m.startedAt), m.interrupted ? 'Unknown (server restarted)' : fmtDuration(m.endedAt - m.startedAt), m.names.join(', '), fmtAudio(m.audioSec || 0), transcriptCell(m),
+    roomCell(m), fmtWhen(m.startedAt), m.interrupted ? 'Unknown (server restarted)' : fmtDuration(m.endedAt - m.startedAt), m.names.join(', '), fmtAudio(m.audioSec || 0), transcriptCell(m),
   ]));
 }
 
@@ -183,9 +189,11 @@ async function loadProfile() {
   $('pfDisplay').value = user.displayName;
   $('pfUsername').value = user.username;
   $('pfEmail').value = user.email;
+  $('pfWaiting').checked = user.waitingRoom;
 }
 loadProfile();
 refresh();
+loadScheduled();
 setInterval(() => { if (!$('dashboard').hidden) refresh(); }, 10_000);
 
 function say(el, ok, text) {
@@ -198,7 +206,7 @@ $('profileForm').onsubmit = async (e) => {
   const r = await fetch('/api/profile', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName: $('pfDisplay').value, username: $('pfUsername').value, email: $('pfEmail').value }),
+    body: JSON.stringify({ displayName: $('pfDisplay').value, username: $('pfUsername').value, email: $('pfEmail').value, waitingRoom: $('pfWaiting').checked }),
   });
   const out = await r.json().catch(() => ({}));
   say('pfMsg', r.ok, r.ok ? 'Profile saved.' : out.error || 'Could not save it.');
@@ -219,4 +227,42 @@ $('pwForm').onsubmit = async (e) => {
   const out = await r.json().catch(() => ({}));
   say('pwMsg', r.ok, r.ok ? 'Password changed. Other browsers were signed out.' : out.error || 'Could not change it.');
   if (r.ok) $('pwForm').reset();
+};
+
+// ---------- Scheduled meetings ----------
+const linkFor = (s) => `${location.origin}/r/${encodeURIComponent(s.room)}`;
+async function loadScheduled() {
+  const list = await fetch('/api/admin/scheduled').then((r) => (r.ok ? r.json() : []));
+  fill('schedRows', 'schedEmpty', list.map((s) => {
+    const copy = Object.assign(document.createElement('button'), { type: 'button', className: 'btn sm', textContent: 'Copy link' });
+    copy.onclick = async () => {
+      try { await navigator.clipboard.writeText(linkFor(s)); copy.textContent = 'Copied'; } catch { prompt('Meeting link', linkFor(s)); }
+      setTimeout(() => { copy.textContent = 'Copy link'; }, 1500);
+    };
+    const open = Object.assign(document.createElement('a'), { className: 'btn primary sm', href: linkFor(s), textContent: 'Start' });
+    const del = Object.assign(document.createElement('button'), { type: 'button', className: 'link', textContent: 'Remove' });
+    del.onclick = async () => { await fetch(`/api/admin/scheduled/${s.id}`, { method: 'DELETE' }); loadScheduled(); };
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    actions.append(copy, open);
+    const past = s.at + s.minutes * 60_000 < Date.now();
+    return [s.title, `${fmtWhen(s.at)}${past ? ' (past)' : ''} · ${s.minutes} min`, s.waitingRoom ? 'On' : 'Off', actions, del];
+  }));
+}
+// Default to the next half hour.
+const next = new Date(Math.ceil(Date.now() / 1_800_000) * 1_800_000);
+$('schedAt').value = new Date(next - next.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+$('schedForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const r = await fetch('/api/admin/scheduled', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: $('schedTitle').value, at: new Date($('schedAt').value).getTime(), minutes: Number($('schedMinutes').value), waitingRoom: $('schedWaiting').checked }),
+  });
+  const out = await r.json().catch(() => ({}));
+  if (!r.ok) return say('schedMsg', false, out.error || 'Could not schedule it.');
+  try { await navigator.clipboard.writeText(linkFor(out)); say('schedMsg', true, `Scheduled. The link is copied: ${linkFor(out)}`); }
+  catch { say('schedMsg', true, `Scheduled. Send this link: ${linkFor(out)}`); }
+  $('schedTitle').value = '';
+  loadScheduled();
 };

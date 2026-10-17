@@ -373,6 +373,15 @@ $('roomInput').oninput = () => {
 };
 
 // Only the host (signed in) starts meetings; everyone else joins with a link or code.
+// A scheduled meeting's link shows its title and time before it starts.
+const fmtSchedule = (at) => new Date(at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+if (urlRoom) fetch(`/api/rooms/${encodeURIComponent(urlRoom)}`).then((r) => r.json()).then(({ scheduled, open }) => {
+  state.scheduled = scheduled;
+  if (!scheduled) return;
+  $('lobbyTitle').textContent = scheduled.title;
+  $('lobbySub').textContent = open ? 'The meeting has started.' : `Scheduled for ${fmtSchedule(scheduled.at)}.`;
+}).catch(() => {});
+
 const meReady = fetch('/api/me').then((r) => r.json()).then(({ user }) => {
   state.user = user;
   $('signedIn').hidden = !user;
@@ -453,6 +462,43 @@ function join() {
   state.joinMsg = { type: 'join', room, name: state.myName };
   state.ws.onmessage = (e) => onSignal(JSON.parse(e.data));
   state.ws.onclose = () => { if (!state.ended) endSession('lost'); };
+}
+
+function waitingScreen(title, sub) {
+  $('emptyTitle').textContent = title;
+  $('emptySub').textContent = sub;
+  $('emptySub').hidden = false;
+  $('inviteBox').hidden = true;
+}
+
+// ---------- Waiting room ----------
+// The host (and anyone signed in) sees a card for each guest waiting to get in.
+function showKnock(id, name) {
+  if ($('knocks').querySelector(`[data-id="${id}"]`)) return;
+  const card = document.createElement('div');
+  card.className = 'knock';
+  card.dataset.id = id;
+  const text = document.createElement('span');
+  text.append(Object.assign(document.createElement('b'), { textContent: name }), ' wants to join');
+  const answer = (allow) => { signal({ type: 'admit', id, allow }); card.remove(); };
+  const no = Object.assign(document.createElement('button'), { type: 'button', className: 'btn sm', textContent: 'Deny', onclick: () => answer(false) });
+  const yes = Object.assign(document.createElement('button'), { type: 'button', className: 'btn primary sm', textContent: 'Let in', onclick: () => answer(true) });
+  card.append(text, no, yes);
+  $('knocks').append(card);
+  if (document.hidden) document.title = `${name} is waiting · ${TITLE}`;
+  ding();
+}
+function ding() {
+  try {
+    const ctx = noise.ctx || (ding.ctx ||= new AudioContext());
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = 880;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+    o.connect(g).connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.45);
+  } catch {}
 }
 
 function signal(msg) { state.ws?.readyState === 1 && state.ws.send(JSON.stringify(msg)); }
@@ -545,10 +591,24 @@ async function onSignal(msg) {
   switch (msg.type) {
     case 'not-started':
       // The room opens when the host joins; keep asking until then.
-      $('emptyTitle').textContent = 'Waiting for the host to start this meeting';
+      waitingScreen(msg.scheduled ? msg.scheduled.title : 'Waiting for the host to start this meeting',
+        `${msg.scheduled ? `Starts ${fmtSchedule(msg.scheduled.at)}. ` : ''}You'll join automatically when the host opens it. Keep this page open.`);
       setStatus('Waiting for the host');
       clearTimeout(state.retryJoin);
       state.retryJoin = setTimeout(() => signal(state.joinMsg), 3000);
+      break;
+    case 'waiting':
+      waitingScreen('Waiting for the host to let you in', 'They\'ve been told you\'re here.');
+      setStatus('In the waiting room');
+      break;
+    case 'denied':
+      endSession('denied');
+      break;
+    case 'knock':
+      showKnock(msg.id, msg.name);
+      break;
+    case 'knock-gone':
+      $('knocks').querySelector(`[data-id="${msg.id}"]`)?.remove();
       break;
     case 'full':
       $('emptyTitle').textContent = 'This room is full';
@@ -556,6 +616,9 @@ async function onSignal(msg) {
       break;
     case 'joined':
       $('emptyTitle').textContent = 'Waiting for others to join';
+      $('emptySub').hidden = true;
+      $('inviteBox').hidden = false;
+      if (msg.title) document.title = `${msg.title} · ${TITLE}`;
       state.myId = msg.id;
       state.isHost = !!msg.host;
       state.hostId = msg.hostId;
@@ -742,12 +805,13 @@ const END_REASONS = {
   timeout: () => 'It closed automatically because nobody chose to continue it.',
   left: (by) => `${by || 'The other person'} left or closed their window.`,
   lost: () => 'The connection to the server was lost.',
+  denied: () => 'The host didn\'t let you in.',
 };
 function endSession(reason, by) {
   teardown();
-  $('endedTitle').textContent = reason === 'self' ? 'You left the call' : 'Session ended';
+  $('endedTitle').textContent = reason === 'self' ? 'You left the call' : reason === 'denied' ? 'You weren\'t let in' : 'Session ended';
   $('endedReason').textContent = (END_REASONS[reason] || END_REASONS.left)(by);
-  $('rejoinBtn').hidden = reason === 'timeout';
+  $('rejoinBtn').hidden = reason === 'timeout' || reason === 'denied';
   $('call').hidden = true;
   $('ended').hidden = false;
 }

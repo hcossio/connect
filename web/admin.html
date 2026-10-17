@@ -32,6 +32,23 @@
     </section>
 
     <section class="panel">
+      <h2>Scheduled meetings</h2>
+      <form id="schedForm" class="sched-form">
+        <label class="field"><span>Title</span><input id="schedTitle" required maxlength="80" placeholder="e.g. Fix the login loop with Gina"></label>
+        <label class="field"><span>When</span><input id="schedAt" type="datetime-local" required></label>
+        <label class="field"><span>Length</span><select id="schedMinutes"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 hour</option><option value="90">1.5 hours</option><option value="120">2 hours</option></select></label>
+        <label class="check"><input id="schedWaiting" type="checkbox" checked> Waiting room</label>
+        <button class="btn primary" type="submit">Schedule</button>
+      </form>
+      <p id="schedMsg" class="small" hidden></p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Meeting</th><th>When</th><th>Waiting room</th><th>Link</th><th></th></tr></thead>
+        <tbody id="schedRows"></tbody>
+      </table></div>
+      <p id="schedEmpty" class="muted small" hidden>Nothing scheduled.</p>
+    </section>
+
+    <section class="panel">
       <h2>Open meetings</h2>
       <div class="table-wrap"><table>
         <thead><tr><th>Room</th><th>Started</th><th>Length</th><th>People</th><th>Transcribed</th><th>Transcript</th></tr></thead>
@@ -67,6 +84,7 @@
         <label class="field"><span>Display name <span class="muted">(your name in calls)</span></span><input id="pfDisplay" maxlength="40" autocomplete="name"></label>
         <label class="field"><span>Username</span><input id="pfUsername" required minlength="3" maxlength="32" autocomplete="username" autocapitalize="off"></label>
         <label class="field"><span>Email</span><input id="pfEmail" type="email" required autocomplete="email"></label>
+        <label class="check"><input id="pfWaiting" type="checkbox"> Use a waiting room in my calls <span class="muted small">(guests wait until you let them in; scheduled meetings have their own setting)</span></label>
         <button class="btn primary" type="submit">Save profile</button>
         <p id="pfMsg" class="small" hidden></p>
       </form>

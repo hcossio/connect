@@ -81,10 +81,13 @@
       <div id="stage" class="stage" data-mode="empty">
         <div id="emptyState" class="empty">
           <p id="emptyTitle" class="empty-title">Waiting for others to join</p>
-          <p class="muted">Send them this link:</p>
-          <div class="invite">
-            <code id="inviteLink"></code>
-            <button id="copyInviteBtn" class="btn" type="button"><svg class="icon sm"><use href="#i-copy"/></svg>Copy</button>
+          <p id="emptySub" class="muted" hidden></p>
+          <div id="inviteBox">
+            <p class="muted">Send them this link:</p>
+            <div class="invite">
+              <code id="inviteLink"></code>
+              <button id="copyInviteBtn" class="btn" type="button"><svg class="icon sm"><use href="#i-copy"/></svg>Copy</button>
+            </div>
           </div>
         </div>
 
@@ -115,6 +118,7 @@
         <div id="captions" class="captions" aria-live="polite"></div>
         <div id="toasts" class="toasts" aria-live="polite"></div>
         <div id="chatPops" class="chat-pops" aria-live="polite"></div>
+        <div id="knocks" class="knocks" aria-live="assertive"></div>
       </div>
 
       <aside id="chat" class="chat" hidden>

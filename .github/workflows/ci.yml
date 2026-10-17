@@ -15,4 +15,4 @@ jobs:
           node-version: 22
       - run: npm ci --omit=optional
       - name: Syntax check
-        run: for f in server/index.js web/app.js agent/index.js; do node --check "$f"; done
+        run: for f in server/*.js web/app.js web/admin.js agent/index.js; do node --check "$f"; done

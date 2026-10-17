@@ -44,13 +44,17 @@
         </div>
       </div>
       <form id="lobbyForm" class="lobby-form">
-        <div class="brand"><svg class="logo"><use href="#i-logo"/></svg>DevAssist</div>
+        <div class="brand"><svg class="logo"><use href="#i-logo"/></svg>DevAssist
+          <span class="spacer"></span>
+          <span id="signedIn" class="account muted small" hidden><span id="signedInName"></span> · <span id="adminLink" hidden><a href="/admin">Admin</a> · </span><a id="signOutLink" href="#">Sign out</a></span>
+          <a id="hostSignIn" class="account muted small" href="/login" hidden>Host sign in</a>
+        </div>
         <h1 id="lobbyTitle">Start a support call</h1>
         <p id="lobbySub" class="muted">Video, screen sharing and remote control, in your browser.</p>
         <label class="field"><span>Your name</span>
           <input id="nameInput" placeholder="e.g. Humberto" maxlength="40" autocomplete="name">
         </label>
-        <label id="roomField" class="field"><span>Room code <span class="muted">(optional)</span></span>
+        <label id="roomField" class="field"><span>Room code <span id="roomOptional" class="muted">(optional)</span></span>
           <input id="roomInput" placeholder="Leave empty to start a new room" maxlength="64" autocomplete="off" autocapitalize="off">
         </label>
         <button id="joinBtn" class="btn primary block" type="submit">Start call</button>

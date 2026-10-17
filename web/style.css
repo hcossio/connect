@@ -102,6 +102,7 @@ textarea { resize: none; }
 .round.media-noise.off { background: rgba(0,0,0,.35); border-color: rgba(255,255,255,.25); color: rgba(255,255,255,.6); }
 .lobby-form { display: grid; gap: 14px; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 17px; }
+.brand .account { font-weight: 400; }
 .lobby-form h1 { font-size: 28px; margin-top: 6px; }
 .lobby-form p { margin: 0; }
 .field { display: grid; gap: 6px; font-size: 14px; font-weight: 500; }
@@ -428,3 +429,25 @@ dialog textarea { font: 14px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monos
 @media (max-width: 360px) {
   .ctrl { width: 40px; height: 40px; flex-basis: 40px; }
 }
+
+/* ---------- Sign in and admin ---------- */
+.auth-card { width: min(400px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; }
+.form-error { color: var(--danger); margin: 0; }
+.form-ok { color: var(--ok); margin: 0; }
+body.admin { overflow: auto; }
+.admin-head { display: flex; align-items: center; gap: 8px; padding: 14px var(--gutter); border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.admin-main { max-width: 1100px; margin: 0 auto; padding: 20px var(--gutter) 40px; display: grid; gap: 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.card { display: grid; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+.card b { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; }
+.table-wrap { overflow-x: auto; }
+.panel table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.panel th { text-align: left; font-weight: 500; color: var(--muted); padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.panel td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); }
+.panel tr:last-child td { border-bottom: 0; }
+.panel .muted.small { margin: 8px 0 0; }
+#account { margin-bottom: 12px; }
+.pw-form { display: grid; gap: 12px; max-width: 360px; }
+.pw-form .btn { justify-self: start; }
+.field input { width: 100%; }

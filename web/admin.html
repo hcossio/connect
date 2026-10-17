@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e1116">
+  <title>Admin · DevAssist</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b82f6'/%3E%3Cpath d='M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="admin">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="var(--accent)" stroke="none"/><path d="M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z" fill="#fff" stroke="none"/></symbol>
+  </svg>
+  <header class="admin-head">
+    <div class="brand"><svg class="logo"><use href="#i-logo"/></svg>DevAssist <span class="muted">Admin</span></div>
+    <span class="spacer"></span>
+    <a class="btn primary sm" href="/">Start a call</a>
+    <button id="signOut" class="btn sm" type="button">Sign out</button>
+  </header>
+
+  <main class="admin-main">
+    <section class="cards">
+      <div class="card"><span class="muted small">Open now</span><b id="kOpen">–</b><span id="kOpenSub" class="muted small"></span></div>
+      <div class="card"><span class="muted small">Meetings, last 30 days</span><b id="kMeetings">–</b><span id="kMinutes" class="muted small"></span></div>
+      <div class="card"><span class="muted small">Transcribed, last 30 days</span><b id="kAudio">–</b><span id="kClips" class="muted small"></span></div>
+      <div class="card"><span class="muted small">xAI cost, last 30 days</span><b id="kCost">–</b><span id="kPrice" class="muted small"></span></div>
+    </section>
+
+    <section class="panel">
+      <h2>Open meetings</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Room</th><th>Started</th><th>Length</th><th>People</th><th>Transcribed</th></tr></thead>
+        <tbody id="openRows"></tbody>
+      </table></div>
+      <p id="openEmpty" class="muted small" hidden>No meetings are open right now.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Daily usage</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Day</th><th>Meetings</th><th>Call time</th><th>Transcribed</th><th>Clips</th><th>xAI cost</th></tr></thead>
+        <tbody id="dayRows"></tbody>
+      </table></div>
+      <p id="dayEmpty" class="muted small" hidden>Nothing yet.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Recent meetings</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Room</th><th>Started</th><th>Length</th><th>People</th><th>Transcribed</th></tr></thead>
+        <tbody id="recentRows"></tbody>
+      </table></div>
+      <p id="recentEmpty" class="muted small" hidden>No finished meetings yet.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Your account</h2>
+      <p id="account" class="muted small"></p>
+      <form id="pwForm" class="pw-form">
+        <label class="field"><span>Current password</span><input id="pwCurrent" type="password" autocomplete="current-password" required></label>
+        <label class="field"><span>New password</span><input id="pwNext" type="password" autocomplete="new-password" minlength="10" required></label>
+        <button class="btn" type="submit">Change password</button>
+        <p id="pwMsg" class="small" hidden></p>
+      </form>
+    </section>
+  </main>
+  <script src="/admin.js"></script>
+</body>
+</html>

@@ -3,3 +3,4 @@ helper/node_modules/
 helper/src-tauri/target/
 helper/src-tauri/gen/
 helper/dist/
+data/

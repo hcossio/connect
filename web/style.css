@@ -116,7 +116,7 @@ textarea { resize: none; }
 .ended-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 8px; }
 
 /* ---------- Call layout ---------- */
-.call { height: 100%; height: 100dvh; display: grid; grid-template-rows: auto 1fr auto; }
+.call { height: 100%; height: 100dvh; overflow-x: clip; display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); }
 .topbar { display: flex; align-items: center; gap: 12px; padding: 10px var(--gutter); min-width: 0; }
 .chip {
   display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 50vw;
@@ -151,7 +151,9 @@ textarea { resize: none; }
 .invite code { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
 #remoteScreen { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; outline: none; background: #000; }
-#remoteScreen.controlling { cursor: crosshair; touch-action: none; }
+#remoteScreen.controlling { cursor: crosshair; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#remoteScreen, .pointers { transform-origin: 0 0; }
+.stage:has(#remoteScreen.controlling) { touch-action: none; overscroll-behavior: none; }
 
 /* Other people's mouse pointers over the shared screen, each in their color. */
 .pointers { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
@@ -466,8 +468,11 @@ dialog textarea { font: 14px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monos
   .cc-line { font-size: 16px; }
   .chat-pops { bottom: 150px; right: 12px; }
 
-  .controls { gap: 4px; justify-content: space-between; }
-  .ctrl { width: 44px; height: 44px; padding: 0; justify-content: center; flex: 0 1 44px; min-width: 34px; }
+  /* Buttons shrink to fit; if there are still too many they scroll sideways
+     instead of widening the page. */
+  .controls { gap: 4px; justify-content: space-between; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .controls::-webkit-scrollbar { display: none; }
+  .ctrl { width: 44px; height: 44px; padding: 0; justify-content: center; flex: 0 0 auto; width: clamp(36px, calc((100vw - 24px - 8 * 4px) / 9), 44px); }
   .ctrl .label { display: none; }
   .ctrl .icon.slash { left: calc(50% - 11px); }
   .ctrl .swatch { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; }
@@ -518,4 +523,9 @@ button.link:hover { text-decoration: underline; }
 @media (max-width: 640px) {
   .admin-head { flex-wrap: wrap; }
   .admin-nav { order: 3; width: 100%; margin: 4px 0 0; }
+}
+
+/* iPhones zoom the page into any field under 16px when it's focused. */
+@media (pointer: coarse) {
+  input, textarea, select, .composer textarea, dialog textarea { font-size: 16px; }
 }

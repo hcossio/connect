@@ -50,6 +50,17 @@ With nobody sharing, everyone else's cameras fill the stage as a grid. Your came
 
 While someone shares their screen, **Pointers** shows where everyone is pointing. Each person turns it on for themselves and gets their own color (the dot on the button), and their mouse over the shared screen appears, with their name, for everyone else who has it on. The person sharing sees the pointers drawn on their real screen when DevAssist Helper (0.1.2 or later) is open: it shows them in a transparent window that clicks pass through. Pointers are hidden while you are controlling, since the real mouse is moving then.
 
+## Transcript
+
+Anyone in the call can start a transcript from the **Transcript** tab next to Chat, and everyone sees that it's on. Each person's own mic is transcribed and shared as text, so every line carries the right name. The lines appear in the tab and as live captions over the stage, and **Download** saves them as a text file. Nothing is stored on the server.
+
+Each person chooses where their own voice is transcribed:
+
+- **Groq**: short clips of your speech (cut at pauses) go through our server to [Groq](https://groq.com)'s hosted Whisper (`whisper-large-v3-turbo`). It's fast and accurate, and needs `GROQ_API_KEY` set on the server (optional `GROQ_MODEL`). The key never reaches the browser, only people currently in a call can use it, and each person is limited to 40 clips a minute.
+- **This device**: Whisper runs in the browser with [Transformers.js](https://github.com/huggingface/transformers.js) (`onnx-community/whisper-base`, on WebGPU where available, otherwise WebAssembly). Audio never leaves the computer. The model downloads from Hugging Face once and is cached; it's slower on older machines and phones.
+
+The language picker (any, English, Español) helps both engines when everyone speaks the same language.
+
 ## Noise filter
 
 Each person's mic runs through [RNNoise](https://jmvalin.ca/demo/rnnoise/) (via [`@sapphi-red/web-noise-suppressor`](https://github.com/sapphi-red/web-noise-suppressor), MIT) before it is sent, so keyboards, fans, traffic and background chatter are removed and voices come through. It runs locally in the browser in an AudioWorklet; no audio leaves the call. It's on by default, the waveform button turns it off and on (the choice is remembered), and switching doesn't interrupt the call. The browser's built-in echo cancellation and noise suppression stay on underneath. Browsers that can't run it fall back to the plain mic and hide the button.

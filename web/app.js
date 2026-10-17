@@ -525,7 +525,7 @@ async function onSignal(msg) {
       state.hostId = msg.hostId;
       $('myColor').style.setProperty('--c', colorOf(msg.id));
       tx.token = msg.token;
-      tx.groq = !!msg.groq;
+      tx.cloud = !!msg.cloud;
       syncTranscriptUI();
       for (const o of msg.peers) addPeer(o.id, o.name, true);
       updateStage();
@@ -1105,8 +1105,8 @@ function syncPointers() {
 // The person who started the meeting turns the transcript on and picks how
 // voices are transcribed; everyone else just sees it. Each person's browser
 // then transcribes only their own mic and shares the text, so every line
-// carries the right name. Engines: Groq's hosted Whisper (fast and accurate;
-// clips go to Groq through our server) or Whisper on each person's device
+// carries the right name. Engines: xAI's Grok Voice Transcribe (fast and
+// accurate; clips go to xAI through our server) or Whisper on each person's device
 // (private; the model downloads once). Nothing is stored on the server.
 const SPEECH = {
   threshold: 0.008, // RMS level that counts as speech (the noise filter has already removed most noise)
@@ -1118,8 +1118,8 @@ const SPEECH = {
 // Whisper's well-known inventions on silence or noise.
 const HALLUCINATIONS = /^(\[.*\]|\(.*\)|thanks for watching!?|thank you for watching\.?|subt[ií]tulos (realizados )?por .*|amara\.org.*)$/i;
 const tx = {
-  on: false, groq: false, token: null,
-  engine: 'groq', lang: '',
+  on: false, cloud: false, token: null,
+  engine: 'cloud', lang: '',
   ctx: null, src: null, node: null,
   pre: [], clip: null,
   queue: Promise.resolve(), pending: 0,
@@ -1128,11 +1128,11 @@ const tx = {
 };
 // The meeting starter's own choices, remembered for their next meeting.
 try {
-  tx.engine = localStorage.getItem('devassist:engine') === 'device' ? 'device' : 'groq';
+  tx.engine = localStorage.getItem('devassist:engine') === 'device' ? 'device' : 'cloud';
   tx.lang = localStorage.getItem('devassist:lang') || '';
 } catch {}
 $('txLang').value = tx.lang;
-const engineNow = () => (tx.engine === 'groq' && !tx.groq ? 'device' : tx.engine);
+const engineNow = () => (tx.engine === 'cloud' && !tx.cloud ? 'device' : tx.engine);
 
 function showTab(which) {
   const transcript = which === 'transcript';
@@ -1156,10 +1156,10 @@ function syncTranscriptUI() {
   $('txDot').hidden = !tx.on;
   $('txDownload').disabled = !tx.lines.length;
   for (const b of $$('.seg button')) b.setAttribute('aria-checked', String(b.dataset.engine === engine));
-  $('engGroq').disabled = !tx.groq;
-  $('engGroq').title = tx.groq ? '' : 'Groq isn\'t set up on this server (GROQ_API_KEY)';
-  $('txNote').textContent = engine === 'groq'
-    ? 'Everyone\'s voice is sent to Groq to be transcribed. Fast and accurate.'
+  $('engCloud').disabled = !tx.cloud;
+  $('engCloud').title = tx.cloud ? '' : 'xAI isn\'t set up on this server (XAI_API_KEY)';
+  $('txNote').textContent = engine === 'cloud'
+    ? 'Everyone\'s voice is sent to xAI (Grok) to be transcribed. Fast and accurate.'
     : 'Voices stay on each person\'s computer. Each browser downloads the speech model once (about 80 to 200 MB), and it\'s slower on older machines.';
 }
 // The meeting starter's settings apply to everyone.
@@ -1192,7 +1192,7 @@ $('txToggle').onclick = () => {
   setTranscribing(on, null);
 };
 function onTranscribe(p, m) {
-  if (m.engine === 'groq' || m.engine === 'device') tx.engine = m.engine;
+  if (m.engine === 'cloud' || m.engine === 'device') tx.engine = m.engine;
   tx.lang = /^[a-z]{2}$/.test(m.lang) ? m.lang : '';
   if (!!m.on === tx.on) return syncTranscriptUI(); // only the settings changed
   setTranscribing(!!m.on, p, m.already);
@@ -1267,7 +1267,7 @@ function transcribeClip(audio, at) {
   tx.pending++;
   tx.queue = tx.queue.then(async () => {
     try {
-      const raw = engine === 'groq' ? await viaGroq(audio) : await viaDevice(audio);
+      const raw = engine === 'cloud' ? await viaCloud(audio) : await viaDevice(audio);
       const text = raw.trim().replace(/\s+/g, ' ');
       if (!tx.on || !/\p{L}/u.test(text) || HALLUCINATIONS.test(text)) return;
       addLine(state.myName, text, at, true);
@@ -1278,7 +1278,7 @@ function transcribeClip(audio, at) {
   });
 }
 
-async function viaGroq(audio) {
+async function viaCloud(audio) {
   const r = await fetch(`/api/transcribe${tx.lang ? `?lang=${tx.lang}` : ''}`, {
     method: 'POST', headers: { 'Content-Type': 'audio/wav', 'X-Token': tx.token || '' }, body: wav(audio),
   });
@@ -1316,7 +1316,7 @@ function viaDevice(audio) {
       }
     };
     tx.worker.onerror = (e) => {
-      for (const job of tx.jobs.values()) job.reject(new Error('The on-device speech model couldn\'t load. Try Groq, or check this browser can reach the internet.'));
+      for (const job of tx.jobs.values()) job.reject(new Error('The on-device speech model couldn\'t load. Try xAI, or check this browser can reach the internet.'));
       tx.jobs.clear();
       tx.worker = null;
       e.preventDefault();

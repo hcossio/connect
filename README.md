@@ -56,7 +56,7 @@ The person who started the meeting can turn on a transcript from the **Transcrip
 
 The meeting starter's engine choice applies to everyone:
 
-- **Groq**: short clips of each person's speech (cut at pauses) go through our server to [Groq](https://groq.com)'s hosted Whisper (`whisper-large-v3-turbo`). It's fast and accurate, and needs `GROQ_API_KEY` set on the server (optional `GROQ_MODEL`). The key never reaches the browser, only people currently in a call can use it, and each person is limited to 40 clips a minute. Without a key, everyone transcribes on device.
+- **xAI**: short clips of each person's speech (cut at pauses) go through our server to [xAI](https://x.ai)'s speech-to-text (`grok-voice-transcribe-2.0`). It's fast and accurate, and needs `XAI_API_KEY` set on the server (optional `XAI_STT_MODEL`, `XAI_STT_URL`). The key never reaches the browser, only people currently in a call can use it, and each person is limited to 40 clips a minute. Without a key, everyone transcribes on device.
 - **On device**: Whisper runs in each browser with [Transformers.js](https://github.com/huggingface/transformers.js) (`onnx-community/whisper-base`, on WebGPU where available, otherwise WebAssembly). Audio never leaves anyone's computer. Each browser downloads the model from Hugging Face once and caches it; it's slower on older machines and phones.
 
 A language setting (any, English, Español) helps both engines when everyone speaks the same language.

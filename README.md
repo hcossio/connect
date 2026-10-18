@@ -50,6 +50,10 @@ With nobody sharing, everyone else's cameras fill the stage as a grid. Your came
 
 While someone shares their screen, **Pointers** shows where everyone is pointing. Each person turns it on for themselves and gets their own color (the dot on the button), and their mouse over the shared screen appears, with their name, for everyone else who has it on. The person sharing sees the pointers drawn on their real screen when DevAssist Helper (0.1.2 or later) is open: it shows them in a transparent window that clicks pass through. Pointers are hidden while you are controlling, since the real mouse is moving then.
 
+## Shared browser
+
+**Browser** opens a web browser that runs on the server, so everyone in the call sees the same page without anyone sharing their screen. One person is in control at a time: whoever opened it starts in control, and anyone can press **Take over** (or type an address) to drive. Everyone's mouse over the page shows up for the others with their name. On a phone, tap to click, drag to scroll, and use the keyboard button to type. It needs Chromium on the server (`railpack.json` installs it on Railway; set `CHROMIUM_PATH` elsewhere). The browser can't open localhost or private network addresses (`BROWSER_ALLOW_PRIVATE=1` allows them for local testing), and at most `BROWSER_MAX` (default 4) calls can have one open at once.
+
 ## Transcript
 
 The person who started the meeting can turn on a transcript from the **Transcript** tab next to Chat and choose how voices are transcribed. Everyone else sees that it's on and reads along, with no settings to deal with. If the meeting starter leaves, the next person in the call gets the controls. Each person's browser transcribes only their own mic and shares the text, so every line carries the right name. Lines appear in the tab and as live captions over the stage, and **Download** saves them as a text file. Nothing is stored on the server.

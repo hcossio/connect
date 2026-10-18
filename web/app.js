@@ -29,6 +29,8 @@ const state = {
   hostId: null,
   ended: false,
 };
+// The shared browser (see Shared browser below).
+const brw = { on: false, driver: null, driverName: null, url: '', loading: false, pending: null, drawing: false, mine: false };
 /**
  * Everyone else in the call, by the id the server gave them.
  * @type {Map<number, { id: number, name: string, pc: RTCPeerConnection, dc: RTCDataChannel,
@@ -75,7 +77,8 @@ function updateStage() {
   // Keep the wanted screen while its video is still on the way.
   if (!peers.get(state.focusId)?.screenStreamId) state.focusId = sharers.at(-1)?.id ?? null;
   const wanted = peers.get(state.focusId);
-  const focus = wanted?.screen ? wanted : sharers.at(-1) || null;
+  // The shared browser, while open, takes the stage over anyone's screen.
+  const focus = brw.on ? null : wanted?.screen ? wanted : sharers.at(-1) || null;
   state.shownId = focus?.id ?? null;
   const screen = $('remoteScreen');
   if (focus) {
@@ -85,8 +88,8 @@ function updateStage() {
     screen.hidden = true;
     screen.srcObject = null;
   }
-  $('stage').dataset.mode = focus ? 'screen' : peers.size ? 'cam' : 'empty';
-  $('emptyState').hidden = peers.size > 0;
+  $('stage').dataset.mode = focus || brw.on ? 'screen' : peers.size ? 'cam' : 'empty';
+  $('emptyState').hidden = peers.size > 0 || brw.on;
   $('grid').hidden = peers.size === 0;
   $('grid').dataset.count = peers.size;
   for (const p of peers.values()) {
@@ -715,6 +718,7 @@ async function onSignal(msg) {
       state.isHost = !!msg.host;
       state.hostId = msg.hostId;
       $('myColor').style.setProperty('--c', colorOf(msg.id));
+      $('browserBtn').hidden = !msg.browser;
       tx.token = msg.token;
       tx.cloud = !!msg.cloud;
       syncTranscriptUI();
@@ -739,6 +743,9 @@ async function onSignal(msg) {
       state.isHost = msg.id === state.myId;
       syncTranscriptUI();
       break;
+    case 'browser': onBrowser(msg); break;
+    case 'browser-frame': onBrowserFrame(msg.data); break;
+    case 'browser-error': toast(msg.message, 6000); break;
     case 'session-check':
       // Sent only to whoever started the session. No countdown on purpose:
       // if nobody answers, the server closes the session a few minutes later.
@@ -828,6 +835,7 @@ function onData(p, m) {
       if (m.on) systemMessage(`${p.name} is recording this remote control session.`);
       break;
     case 'pointer': onPointer(p, m); break;
+    case 'bpointer': p.bpointer = m.off ? null : { x: +m.x, y: +m.y, driver: !!m.driver }; drawBrowserPointer(p); break;
     case 'transcribe': if (p.id === state.hostId) onTranscribe(p, m); break;
     case 'line': if (typeof m.text === 'string') addLine(p.name, m.text.slice(0, 2000), Number(m.at) || Date.now(), false, p.id); break;
   }
@@ -885,6 +893,7 @@ addEventListener('pagehide', () => { if (!state.ended) teardown(); });
 
 function teardown() {
   if (state.ended) return;
+  onBrowser({ on: false });
   // Once the host has saved the transcript, keep the saved copy up to date
   // as they leave so the summary covers the whole call.
   if (tx.savedCount && tx.lines.length > tx.savedCount && state.isHost) {
@@ -1517,6 +1526,250 @@ $('typeForm').addEventListener('submit', (e) => {
   screenEl.focus({ preventScroll: true });
 });
 
+// ---------- Shared browser ----------
+// A browser running on the server. Everyone sees its page; whoever is in
+// control clicks, scrolls and types on it, one person at a time. Everyone's
+// mouse over the page shows up for the others with their name.
+const bCanvas = $('browserCanvas'), bCtx = bCanvas.getContext('2d');
+const BW = bCanvas.width, BH = bCanvas.height;
+const driving = () => brw.on && brw.driver === state.myId;
+
+$('browserBtn').onclick = () => {
+  if (brw.on) return signal({ type: 'browser-close' });
+  brw.mine = true;
+  signal({ type: 'browser-open' });
+};
+$('bClose').onclick = () => signal({ type: 'browser-close' });
+$('bTake').onclick = () => signal({ type: 'browser-take' });
+$('bBack').onclick = () => signal({ type: 'browser-nav', action: 'back' });
+$('bForward').onclick = () => signal({ type: 'browser-nav', action: 'forward' });
+$('bReload').onclick = () => signal({ type: 'browser-nav', action: 'reload' });
+$('bForm').onsubmit = (e) => {
+  e.preventDefault();
+  const url = $('bUrl').value.trim();
+  if (!url) return;
+  if (!driving()) signal({ type: 'browser-take' }); // typing an address takes control
+  signal({ type: 'browser-nav', action: 'go', url });
+  $('bUrl').blur();
+  bCanvas.focus({ preventScroll: true });
+};
+
+function onBrowser(msg) {
+  const was = brw.on, wasMine = driving();
+  Object.assign(brw, { on: !!msg.on, driver: msg.driver ?? null, driverName: msg.driverName || null, url: msg.url || '', loading: !!msg.loading });
+  if (!brw.on) {
+    brw.pending = null;
+    bCtx.fillStyle = '#000'; bCtx.fillRect(0, 0, BW, BH);
+    for (const p of peers.values()) { p.bpointer = null; drawBrowserPointer(p); }
+    if (was && !state.ended) toast('The shared browser was closed');
+  } else if (!was) {
+    if (!brw.mine) toast(`${msg.by} opened a shared browser`);
+    if (brw.mine && !matchMedia('(pointer: coarse)').matches) setTimeout(() => $('bUrl').focus(), 50);
+  }
+  if (wasMine && brw.on && !driving() && brw.driverName) toast(`${brw.driverName} took control of the browser`);
+  brw.mine = false;
+  syncBrowserUI();
+  if (was !== brw.on) updateStage();
+}
+
+function syncBrowserUI() {
+  const mine = driving();
+  $('browserView').hidden = !brw.on;
+  $('browserBtn').classList.toggle('active', brw.on);
+  $('browserBtn').title = brw.on ? 'Close the shared browser' : 'Open a browser everyone in the call can see and use';
+  $('browserView').classList.toggle('driving', mine);
+  if (document.activeElement !== $('bUrl')) $('bUrl').value = brw.url === 'about:blank' ? '' : brw.url;
+  $('bDriver').textContent = mine ? 'You’re in control' : brw.driverName ? `${brw.driverName} is in control` : '';
+  $('bTake').hidden = mine;
+  $('bTake').textContent = brw.driver ? 'Take over' : 'Take control';
+  for (const id of ['bBack', 'bForward', 'bReload']) $(id).disabled = !mine;
+  $('bKeys').hidden = !mine || !matchMedia('(pointer: coarse)').matches;
+  $('bLoading').hidden = !brw.loading;
+  if (!mine && document.activeElement === $('bType')) $('bType').blur();
+}
+
+// Frames arrive as JPEG; draw the newest one and drop any we fell behind on.
+function onBrowserFrame(data) {
+  if (!brw.on) return;
+  brw.pending = data;
+  if (!brw.drawing) drawBrowserFrames();
+}
+async function drawBrowserFrames() {
+  brw.drawing = true;
+  while (brw.pending) {
+    const data = brw.pending;
+    brw.pending = null;
+    try {
+      const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+      const img = await createImageBitmap(new Blob([bytes], { type: 'image/jpeg' }));
+      bCtx.drawImage(img, 0, 0, BW, BH);
+      img.close();
+    } catch {}
+  }
+  brw.drawing = false;
+}
+
+// Where the page is drawn inside the canvas box (object-fit: contain).
+function browserBox() {
+  const W = bCanvas.clientWidth, H = bCanvas.clientHeight;
+  if (!W || !H) return null;
+  const s = Math.min(W / BW, H / BH);
+  return { x: (W - BW * s) / 2, y: (H - BH * s) / 2, w: BW * s, h: BH * s };
+}
+function browserPoint(ev) {
+  const r = bCanvas.getBoundingClientRect(), b = browserBox();
+  if (!b) return null;
+  const x = (ev.clientX - r.left - b.x) / b.w, y = (ev.clientY - r.top - b.y) / b.h;
+  return x < 0 || x > 1 || y < 0 || y > 1 ? null : { x, y };
+}
+const bInput = (e) => signal({ type: 'browser-input', e });
+
+// Our pointer, shown to everyone else.
+let bLastPointer = 0, bPointerShown = false;
+function shareBrowserPointer(pos, force) {
+  const now = performance.now();
+  if (!force && now - bLastPointer < 33) return;
+  bLastPointer = now;
+  if (!pos) { if (bPointerShown) broadcast({ t: 'bpointer', off: true }); bPointerShown = false; return; }
+  bPointerShown = true;
+  broadcast({ t: 'bpointer', x: pos.x, y: pos.y, driver: driving() });
+}
+function drawBrowserPointer(p) {
+  const pt = brw.on ? p.bpointer : null;
+  const b = pt && browserBox();
+  let el = p.bpointerEl;
+  if (!b) { if (el) el.hidden = true; return; }
+  if (!el) {
+    el = p.bpointerEl = document.createElement('div');
+    el.className = 'pointer';
+    el.hidden = true;
+    el.style.setProperty('--c', colorOf(p.id));
+    el.innerHTML = '<svg viewBox="0 0 24 24"><use href="#i-cursors"/></svg><span></span>';
+    $('browserPointers').append(el);
+  }
+  el.querySelector('span').textContent = p.name;
+  el.classList.toggle('driver', p.id === brw.driver);
+  el.style.transform = `translate(${b.x + pt.x * b.w - 4}px, ${b.y + pt.y * b.h - 4}px)`;
+  if (el.hidden) { el.hidden = false; el.style.transition = 'none'; el.offsetWidth; el.style.transition = ''; }
+  el.classList.remove('idle');
+  clearTimeout(el.idle);
+  el.idle = setTimeout(() => el.classList.add('idle'), 4000);
+}
+addEventListener('resize', () => { for (const p of peers.values()) drawBrowserPointer(p); });
+
+function notDrivingHint() {
+  if (!brw.driver) { signal({ type: 'browser-take' }); return true; } // nobody's using it: it's yours
+  toast(`${brw.driverName} is in control. Use Take over to drive.`);
+  return false;
+}
+
+// Mouse and pen.
+let bLastMove = 0;
+bCanvas.addEventListener('pointermove', (ev) => {
+  if (ev.pointerType === 'touch') return;
+  const pos = browserPoint(ev);
+  shareBrowserPointer(pos);
+  if (!driving() || !pos) return;
+  const now = performance.now(); if (now - bLastMove < 16) return; bLastMove = now;
+  bInput({ type: 'move', ...pos });
+});
+bCanvas.addEventListener('pointerleave', (ev) => { if (ev.pointerType !== 'touch') shareBrowserPointer(null, true); });
+bCanvas.addEventListener('pointerdown', (ev) => {
+  if (ev.pointerType === 'touch') return;
+  const pos = browserPoint(ev);
+  if (!pos) return;
+  if (!driving() && !notDrivingHint()) return;
+  ev.preventDefault();
+  bCanvas.focus({ preventScroll: true });
+  bCanvas.setPointerCapture(ev.pointerId);
+  bInput({ type: 'down', button: Math.max(ev.button, 0), ...pos });
+});
+bCanvas.addEventListener('pointerup', (ev) => {
+  if (ev.pointerType === 'touch' || !driving()) return;
+  const pos = browserPoint(ev) || { x: 0, y: 0 };
+  bInput({ type: 'up', button: Math.max(ev.button, 0), ...pos });
+});
+bCanvas.addEventListener('contextmenu', (ev) => driving() && ev.preventDefault());
+bCanvas.addEventListener('wheel', (ev) => {
+  if (!driving()) return;
+  ev.preventDefault();
+  const k = ev.deltaMode === 1 ? 40 : ev.deltaMode === 2 ? 800 : 1;
+  const pos = browserPoint(ev) || { x: 0.5, y: 0.5 };
+  bInput({ type: 'wheel', dx: ev.deltaX * k, dy: ev.deltaY * k, ...pos });
+}, { passive: false });
+
+// Keyboard: everything typed while the page has focus goes to it. Ctrl/Cmd+V
+// pastes your own clipboard.
+bCanvas.addEventListener('keydown', async (ev) => {
+  if (!driving()) return;
+  ev.preventDefault();
+  if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && ev.key.toLowerCase() === 'v') {
+    const text = await navigator.clipboard.readText().catch(() => '');
+    if (text) return bInput({ type: 'text', text });
+  }
+  if (ev.key === 'Dead' || ev.key === 'Unidentified' || ev.key === 'Process') return;
+  bInput({ type: 'keydown', key: ev.key });
+});
+bCanvas.addEventListener('keyup', (ev) => {
+  if (!driving()) return;
+  ev.preventDefault();
+  if (ev.key === 'Dead' || ev.key === 'Unidentified' || ev.key === 'Process') return;
+  bInput({ type: 'keyup', key: ev.key });
+});
+
+// Touch: tap to click, drag to scroll. The keyboard button opens the phone's
+// keyboard and types into whatever field you tapped.
+const bTouch = { start: null, last: null, moved: false };
+bCanvas.addEventListener('touchstart', (ev) => {
+  const t = ev.touches[0];
+  const pos = browserPoint(t);
+  if (pos) shareBrowserPointer(pos, true);
+  if (!driving() || ev.touches.length !== 1) return;
+  ev.preventDefault();
+  bTouch.start = bTouch.last = { clientX: t.clientX, clientY: t.clientY };
+  bTouch.moved = false;
+}, { passive: false });
+bCanvas.addEventListener('touchmove', (ev) => {
+  if (!driving() || !bTouch.start || ev.touches.length !== 1) return;
+  ev.preventDefault();
+  const t = ev.touches[0];
+  if (!bTouch.moved && Math.hypot(t.clientX - bTouch.start.clientX, t.clientY - bTouch.start.clientY) < 10) return;
+  bTouch.moved = true;
+  const b = browserBox(); if (!b) return;
+  const scale = BW / b.w;
+  const pos = browserPoint(bTouch.start) || { x: 0.5, y: 0.5 };
+  bInput({ type: 'wheel', dx: (bTouch.last.clientX - t.clientX) * scale, dy: (bTouch.last.clientY - t.clientY) * scale, ...pos });
+  bTouch.last = { clientX: t.clientX, clientY: t.clientY };
+}, { passive: false });
+bCanvas.addEventListener('touchend', (ev) => {
+  const start = bTouch.start;
+  bTouch.start = null;
+  if (!start) {
+    // Not in control: a tap takes control when nobody has it.
+    if (!driving() && ev.changedTouches.length === 1 && browserPoint(ev.changedTouches[0])) notDrivingHint();
+    return;
+  }
+  ev.preventDefault();
+  if (bTouch.moved) return;
+  const pos = browserPoint(start);
+  if (pos) bInput({ type: 'click', button: 0, ...pos });
+}, { passive: false });
+
+$('bKeys').onclick = () => { $('bType').value = ''; $('bType').focus(); };
+$('bType').addEventListener('beforeinput', (ev) => {
+  ev.preventDefault();
+  if (!driving()) return;
+  if (ev.inputType === 'insertText' || ev.inputType === 'insertReplacementText') { if (ev.data) bInput({ type: 'text', text: ev.data }); }
+  else if (ev.inputType === 'insertLineBreak' || ev.inputType === 'insertParagraph') { bInput({ type: 'keydown', key: 'Enter' }); bInput({ type: 'keyup', key: 'Enter' }); }
+  else if (ev.inputType.startsWith('deleteContentBackward')) { bInput({ type: 'keydown', key: 'Backspace' }); bInput({ type: 'keyup', key: 'Backspace' }); }
+});
+$('bType').addEventListener('keydown', (ev) => {
+  // Hardware keyboards on tablets: keys that make no input event.
+  if (!driving() || !['Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(ev.key)) return;
+  ev.preventDefault();
+  bInput({ type: 'keydown', key: ev.key }); bInput({ type: 'keyup', key: ev.key });
+});
+
 // ---------- Shared pointers ----------
 // With Pointers on, your mouse over the shared screen shows up, in your own
 // color, for everyone else who has Pointers on. Whoever is sharing always sees
@@ -1635,6 +1888,7 @@ function dropPointer(p) {
   p.pointer = null;
   drawPointer(p);
   p.pointerEl?.remove();
+  p.bpointerEl?.remove();
 }
 
 function syncPointers() {

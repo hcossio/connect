@@ -26,7 +26,9 @@ function getBrowser() {
     const { chromium } = require('playwright-core');
     launching = chromium.launch({
       executablePath: executable(),
-      args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--mute-audio'],
+      // Present as an everyday Chrome: many sites refuse browsers that say they're automated.
+      args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--mute-audio', '--disable-blink-features=AutomationControlled'],
+      ignoreDefaultArgs: ['--enable-automation'],
     }).then((b) => {
       b.on('disconnected', () => { launching = null; });
       return b;
@@ -86,7 +88,15 @@ async function open(room, ws, text) {
   announce(s);
   try {
     const browser = await getBrowser();
-    s.ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 1, acceptDownloads: false, locale: 'en-US' });
+    const major = browser.version().split('.')[0];
+    const ua = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
+    s.ctx = await browser.newContext({
+      viewport: { width: W, height: H }, deviceScaleFactor: 1, acceptDownloads: false, locale: 'en-US', timezoneId: 'America/New_York', userAgent: ua,
+    });
+    await s.ctx.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      if (!window.chrome) window.chrome = { runtime: {} };
+    });
     if (s.closed) return s.ctx.close().catch(() => {});
     await s.ctx.route('**/*', async (route) => (await allowedUrl(route.request().url()) ? route.continue() : route.abort('blockedbyclient')));
     s.page = await s.ctx.newPage();
@@ -107,6 +117,14 @@ async function open(room, ws, text) {
     s.page.on('load', async () => { s.loading = false; s.title = await s.page.title().catch(() => ''); announce(s); });
     s.page.on('domcontentloaded', async () => { s.title = await s.page.title().catch(() => ''); announce(s); });
     s.cdp = await s.ctx.newCDPSession(s.page);
+    // The client hints too, which otherwise say "HeadlessChrome" on Linux.
+    await s.cdp.send('Emulation.setUserAgentOverride', {
+      userAgent: ua, acceptLanguage: 'en-US,en', platform: 'Win32',
+      userAgentMetadata: {
+        brands: [{ brand: 'Chromium', version: major }, { brand: 'Google Chrome', version: major }, { brand: 'Not_A Brand', version: '24' }],
+        fullVersion: browser.version(), platform: 'Windows', platformVersion: '15.0.0', architecture: 'x86', bitness: '64', model: '', mobile: false,
+      },
+    });
     s.cdp.on('Page.screencastFrame', ({ data, sessionId }) => {
       s.cdp.send('Page.screencastFrameAck', { sessionId }).catch(() => {});
       s.frame = data;

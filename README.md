@@ -52,7 +52,7 @@ While someone shares their screen, **Pointers** shows where everyone is pointing
 
 ## Shared browser
 
-**Browser** opens a web browser that runs on the server, so everyone in the call sees the same page without anyone sharing their screen. One person is in control at a time: whoever opened it starts in control, and anyone can press **Take over** (or type an address) to drive. Everyone's mouse over the page shows up for the others with their name. On a phone, tap to click, drag to scroll, and use the keyboard button to type. It needs Chromium on the server (`railpack.json` installs it on Railway; set `CHROMIUM_PATH` elsewhere). The browser can't open localhost or private network addresses (`BROWSER_ALLOW_PRIVATE=1` allows them for local testing), and at most `BROWSER_MAX` (default 4) calls can have one open at once.
+**Browser** opens a web browser that runs on the server, so everyone in the call sees the same page without anyone sharing their screen. One person is in control at a time: whoever opened it starts in control, and anyone can press **Take over** (or type an address) to drive. Everyone's mouse over the page shows up for the others with their name. On a phone, tap to click, drag to scroll, and use the keyboard button to type. It needs Chromium on the server (`railpack.json` installs it on Railway; set `CHROMIUM_PATH` elsewhere). The browser can't open localhost or private network addresses (`BROWSER_ALLOW_PRIVATE=1` allows them for local testing), and at most `BROWSER_MAX` (default 4) calls can have one open at once. It presents itself as an everyday Chrome on Windows and searches with DuckDuckGo, but some sites still refuse visitors from cloud server addresses.
 
 ## Transcript
 

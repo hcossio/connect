@@ -11,6 +11,7 @@ const { WebSocketServer } = require('ws');
 const store = require('./store');
 const auth = require('./auth');
 const summary = require('./summary');
+const sharedBrowser = require('./browser');
 
 const PORT = process.env.PORT || 3000;
 // Each person sends their camera to everyone else, so small groups only.
@@ -371,6 +372,7 @@ function endSession(room, reason, leaver) {
   for (const [name, r] of rooms) if (r === room) rooms.delete(name);
   if (!room.meeting.endedAt) store.endMeeting(room.meeting);
   dropFiles(room);
+  sharedBrowser.close(room);
   for (const w of room.waiting) { w.waitingFor = null; send(w, { type: 'not-started', scheduled: publicSchedule(room.meeting.room) }); }
   room.waiting.clear();
   for (const p of room.peers) {
@@ -399,7 +401,8 @@ wss.on('connection', (ws, req) => {
     r.meeting.peak = Math.max(r.meeting.peak, r.peers.size + 1);
     const others = [...r.peers].map((p) => ({ id: p.peerId, name: p.displayName }));
     r.peers.add(ws);
-    send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY, title: r.meeting.title, waitingRoom: r.waitingRoom });
+    send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY, title: r.meeting.title, waitingRoom: r.waitingRoom, browser: sharedBrowser.available() });
+    sharedBrowser.joined(r, ws);
     for (const p of r.peers) if (p !== ws) send(p, { type: 'peer-joined', id: ws.peerId, name: ws.displayName });
     // Someone who can admit people just arrived: show them who's waiting.
     if (r.host === ws || ws.user) for (const w of r.waiting) send(ws, { type: 'knock', id: w.peerId, name: w.displayName });
@@ -465,6 +468,8 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
+    if (sharedBrowser.handle(room, ws, msg)) return;
+
     if (msg.type === 'session-continue') {
       if (room.host === ws) scheduleCheck(room);
       return;
@@ -485,6 +490,7 @@ wss.on('connection', (ws, req) => {
     if (!room || !room.peers.has(ws)) return;
     room.peers.delete(ws);
     if (!room.peers.size) return endSession(room, 'left', ws);
+    sharedBrowser.left(room, ws);
     for (const p of room.peers) send(p, { type: 'peer-left', id: ws.peerId, name: ws.displayName });
     // Someone still has to be asked whether to continue: pass it on.
     if (room.host === ws) {

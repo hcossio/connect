@@ -17,6 +17,7 @@ const state = {
   camStream: new MediaStream(), screenStream: null,
   myName: 'Guest',
   focusId: null,            // whose shared screen we want on the stage
+  split: false, sharers: 0, // several shared screens side by side
   shownId: null,            // whose shared screen is on the stage now
   agent: null,              // WebSocket to DevAssist Helper (helped side)
   controlGrantedTo: null,   // helped side: the person allowed to control us
@@ -77,8 +78,14 @@ function updateStage() {
   // Keep the wanted screen while its video is still on the way.
   if (!peers.get(state.focusId)?.screenStreamId) state.focusId = sharers.at(-1)?.id ?? null;
   const wanted = peers.get(state.focusId);
+  // When a second person starts sharing, show every screen side by side
+  // until someone picks one (not while controlling one of them).
+  if (sharers.length > 1 && state.sharers < 2 && !state.controlling) state.split = true;
+  if (sharers.length < 2) state.split = false;
+  state.sharers = sharers.length;
+  const split = !brw.on && state.split;
   // The shared browser, while open, takes the stage over anyone's screen.
-  const focus = brw.on ? null : wanted?.screen ? wanted : sharers.at(-1) || null;
+  const focus = brw.on || split ? null : wanted?.screen ? wanted : sharers.at(-1) || null;
   state.shownId = focus?.id ?? null;
   const screen = $('remoteScreen');
   if (focus) {
@@ -88,7 +95,8 @@ function updateStage() {
     screen.hidden = true;
     screen.srcObject = null;
   }
-  $('stage').dataset.mode = focus || brw.on ? 'screen' : peers.size ? 'cam' : 'empty';
+  renderSplit(split ? sharers : []);
+  $('stage').dataset.mode = focus || brw.on || split ? 'screen' : peers.size ? 'cam' : 'empty';
   $('emptyState').hidden = peers.size > 0 || brw.on;
   $('grid').hidden = peers.size === 0;
   $('grid').dataset.count = peers.size;
@@ -98,7 +106,9 @@ function updateStage() {
     p.tile.title = p.screen && p !== focus ? `Show ${p.name}'s screen` : '';
   }
   $('screenChip').hidden = !focus;
-  if (focus) $('screenChip').textContent = sharers.length > 1 ? `${focus.name}'s screen · tap a camera to switch` : `${focus.name}'s screen`;
+  if (focus) $('screenChip').textContent = `${focus.name}'s screen`;
+  $('splitBtn').hidden = !focus || sharers.length < 2;
+  $('splitBtn').querySelector('span').textContent = `Show all ${sharers.length} screens`;
   // Control follows the screen on the stage.
   if (state.controlling && state.controlling !== state.shownId) {
     sendTo(state.controlling, { t: 'control-revoked' });
@@ -109,6 +119,31 @@ function updateStage() {
   placeTiles();
   syncPointers();
 }
+// Everyone's shared screens at once. Clicking one puts it on the stage alone.
+function renderSplit(list) {
+  const box = $('splitScreens');
+  box.hidden = !list.length;
+  box.dataset.count = list.length;
+  for (const p of peers.values()) {
+    if (!list.includes(p)) {
+      if (p.splitEl) { p.splitEl.querySelector('video').srcObject = null; p.splitEl.remove(); p.splitEl = null; }
+      continue;
+    }
+    if (!p.splitEl) {
+      const el = p.splitEl = document.createElement('figure');
+      el.className = 'split-item';
+      el.title = 'Show only this screen';
+      el.innerHTML = '<video autoplay playsinline muted></video><figcaption></figcaption>';
+      el.onclick = () => { state.split = false; state.focusId = p.id; updateStage(); };
+    }
+    p.splitEl.querySelector('figcaption').textContent = `${p.name}'s screen`;
+    const v = p.splitEl.querySelector('video');
+    if (v.srcObject !== p.screen) { v.srcObject = p.screen; playWhenAllowed(v); }
+    box.append(p.splitEl); // keeps them in the order people started sharing
+  }
+}
+$('splitBtn').onclick = () => { state.split = true; updateStage(); };
+
 // Pick the column count that gives the biggest tiles: 16:9 on landscape
 // screens, 3:4 on portrait phones.
 function layoutGrid() {
@@ -273,27 +308,104 @@ function stopNoise() {
 
 // ---------- Movable camera tiles ----------
 // Floating tiles (your camera, and the strip of everyone's cameras during a
-// screen share) can be dragged around the stage. Positions are kept as
-// fractions of the free space so they stay put when the window or the chat
-// panel resizes.
+// screen share) can be dragged around the stage, resized from their corner,
+// and dropped back on the right edge to dock them where they started.
+// Positions are kept as fractions of the free space so they stay put when the
+// window or the chat panel resizes.
 const TILES = [$('selfTile'), $('grid')];
 const tilePos = new Map();
+const tileSize = new Map(); // tile -> width in px, chosen by dragging the corner
+const phoneLayout = () => matchMedia('(max-width: 720px)').matches;
+const sizeLimits = () => (phoneLayout() ? [56, 200] : [120, 520]);
+try {
+  const saved = JSON.parse(localStorage.getItem('devassist:tiles') || '{}');
+  for (const tile of TILES) if (saved[tile.id] > 0) tileSize.set(tile, saved[tile.id]);
+} catch {}
+const saveSizes = () => {
+  try { localStorage.setItem('devassist:tiles', JSON.stringify(Object.fromEntries(TILES.map((t) => [t.id, tileSize.get(t) || 0])))); } catch {}
+};
 // While you wait alone, your camera fills the stage and doesn't move.
 const isFloating = (tile) => !tile.hidden && $('stage').dataset.mode !== 'empty' && (tile.id === 'selfTile' || $('stage').dataset.mode === 'screen');
 function placeTile(tile) {
+  const floating = isFloating(tile);
+  const w = tileSize.get(tile);
+  if (floating && w) {
+    const [min, max] = sizeLimits();
+    tile.style.width = `${Math.round(Math.min(Math.max(w, min), max, $('stage').clientWidth - 24))}px`;
+  } else tile.style.width = '';
   const p = tilePos.get(tile);
-  if (!p || !isFloating(tile)) {
+  if (!p || !floating) {
     tile.style.left = tile.style.top = tile.style.right = tile.style.bottom = '';
-    return;
+  } else {
+    const maxX = Math.max(0, $('stage').clientWidth - tile.offsetWidth);
+    const maxY = Math.max(0, $('stage').clientHeight - tile.offsetHeight);
+    Object.assign(tile.style, { left: `${p.x * maxX}px`, top: `${p.y * maxY}px`, right: 'auto', bottom: 'auto' });
   }
-  const maxX = Math.max(0, $('stage').clientWidth - tile.offsetWidth);
-  const maxY = Math.max(0, $('stage').clientHeight - tile.offsetHeight);
-  Object.assign(tile.style, { left: `${p.x * maxX}px`, top: `${p.y * maxY}px`, right: 'auto', bottom: 'auto' });
 }
-function placeTiles() { TILES.forEach(placeTile); }
+// The shared screen keeps clear of whichever cameras are docked on the right.
+function syncStripSpace() {
+  const docked = TILES.filter((t) => isFloating(t) && !tilePos.has(t) && !$('stage').classList.contains('popped'));
+  const w = Math.max(0, ...docked.map((t) => t.offsetWidth));
+  $('stage').style.setProperty('--strip-space', `${w ? w + 28 : 0}px`);
+  // Docked together, the camera strip stops above your own camera.
+  const g = $('grid'), self = $('selfTile');
+  g.style.maxHeight = '';
+  if (docked.includes(g) && docked.includes(self)) {
+    const room = self.getBoundingClientRect().top - g.getBoundingClientRect().top - 12;
+    if (room > 60) g.style.maxHeight = `${room}px`;
+  }
+}
+function placeTiles() { TILES.forEach(placeTile); syncStripSpace(); }
+// Where a tile docks: a highlighted band along the right edge while you drag.
+const dockZone = document.createElement('div');
+dockZone.className = 'dock-zone';
+dockZone.hidden = true;
+dockZone.innerHTML = '<span>Drop to dock</span>';
+$('stage').append(dockZone);
+const DOCK_REACH = 72; // px from the right edge of the stage
 for (const tile of TILES) {
+  const grip = document.createElement('div');
+  grip.className = 'resize-grip';
+  grip.title = 'Drag to resize';
+  tile.append(grip);
+  grip.addEventListener('pointerdown', (e) => {
+    if (!isFloating(tile) || e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const stage = $('stage').getBoundingClientRect();
+    const start = tile.getBoundingClientRect();
+    const [min, max] = sizeLimits();
+    grip.setPointerCapture(e.pointerId);
+    tile.classList.add('resizing');
+    // The corner is bottom-left, so dragging left or down grows the tile and the right edge stays put.
+    const move = (ev) => {
+      const grow = Math.max(e.clientX - ev.clientX, (ev.clientY - e.clientY) * (start.width / start.height));
+      const w = Math.min(Math.max(start.width + grow, min), max, stage.width - 24);
+      tileSize.set(tile, w);
+      if (tilePos.has(tile)) {
+        tile.style.width = `${w}px`;
+        const maxX = stage.width - tile.offsetWidth, maxY = stage.height - tile.offsetHeight;
+        const x = Math.min(Math.max(start.right - stage.left - tile.offsetWidth, 0), maxX);
+        const y = Math.min(Math.max(start.top - stage.top, 0), maxY);
+        tilePos.set(tile, { x: maxX > 0 ? x / maxX : 0, y: maxY > 0 ? y / maxY : 0 });
+      }
+      placeTile(tile);
+      syncStripSpace();
+    };
+    const end = () => {
+      tile.classList.remove('resizing');
+      saveSizes();
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', end);
+      grip.removeEventListener('pointercancel', end);
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', end);
+    grip.addEventListener('pointercancel', end);
+  });
+  // Double-click the corner to go back to the usual size.
+  grip.addEventListener('dblclick', () => { tileSize.delete(tile); saveSizes(); placeTiles(); });
   tile.addEventListener('pointerdown', (e) => {
-    if (!isFloating(tile) || e.button !== 0 || e.target.closest('button')) return;
+    if (!isFloating(tile) || e.button !== 0 || e.target.closest('button, .resize-grip')) return;
     e.preventDefault();
     const stage = $('stage').getBoundingClientRect();
     const start = tile.getBoundingClientRect();
@@ -301,20 +413,28 @@ for (const tile of TILES) {
     const maxX = stage.width - start.width, maxY = stage.height - start.height;
     // A tap (no movement) on a camera in the strip still counts as a click.
     const tapped = e.target.closest('.tile.peer');
-    let moved = false;
+    let moved = false, docking = false;
     tile.setPointerCapture(e.pointerId);
     tile.classList.add('dragging');
     const move = (ev) => {
       if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return;
+      if (!moved) { dockZone.style.setProperty('--w', `${start.width}px`); dockZone.hidden = false; }
       moved = true;
       const x = Math.min(Math.max(ev.clientX - stage.left - grabX, 0), maxX);
       const y = Math.min(Math.max(ev.clientY - stage.top - grabY, 0), maxY);
       tilePos.set(tile, { x: maxX > 0 ? x / maxX : 0, y: maxY > 0 ? y / maxY : 0 });
       placeTile(tile);
+      docking = stage.right - (x + stage.left + start.width) < DOCK_REACH;
+      dockZone.classList.toggle('armed', docking);
+      tile.classList.toggle('will-dock', docking);
     };
     const end = (ev) => {
       if (!moved && ev.type === 'pointerup' && tapped) tapped.click();
-      tile.classList.remove('dragging');
+      if (moved && docking && ev.type === 'pointerup') tilePos.delete(tile);
+      dockZone.hidden = true;
+      dockZone.classList.remove('armed');
+      tile.classList.remove('dragging', 'will-dock');
+      placeTiles();
       tile.removeEventListener('pointermove', move);
       tile.removeEventListener('pointerup', end);
       tile.removeEventListener('pointercancel', end);
@@ -674,6 +794,7 @@ function removePeer(id) {
   if (state.controlGrantedTo === id) revokeControl(false);
   if (state.controlRequestFrom === id) closeControlPrompts();
   dropPointer(p);
+  p.splitEl?.remove();
   p.pc.close();
   p.tile.remove();
   peers.delete(id);
@@ -946,6 +1067,9 @@ async function copyInvite() {
   try { await navigator.clipboard.writeText(location.href); toast('Invite link copied'); }
   catch { toast(location.href, 8000); }
 }
+// WhatsApp opens with the invite written out, ready to pick who gets it.
+const waLink = () => `https://wa.me/?text=${encodeURIComponent(`Join my call on Connect: ${location.href}`)}`;
+for (const a of [$('waInvite'), $('waMenu')]) a.addEventListener('click', () => { a.href = waLink(); setSettingsOpen(false); });
 $('roomChip').onclick = copyInvite;
 $('copyInviteBtn').onclick = copyInvite;
 

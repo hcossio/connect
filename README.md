@@ -44,7 +44,7 @@ Tune with `SESSION_MINUTES` (default 120) and `SESSION_GRACE_MINUTES` (default 5
 
 ## Camera tiles
 
-With nobody sharing, everyone else's cameras fill the stage as a grid. Your camera, and the strip of everyone's cameras during a screen share, float over the stage and can be dragged anywhere (mouse or touch). The pop-out button on a camera opens a small always-on-top window with both cameras and a mic button, so you can keep seeing each other while working in another app. It uses Document Picture-in-Picture in Chrome and Edge, and falls back to the browser's video picture-in-picture in Safari.
+With nobody sharing, everyone else's cameras fill the stage as a grid. Your camera, and the strip of everyone's cameras during a screen share, float over the stage and can be dragged anywhere (mouse or touch). Drag a card's bottom-left corner to make it bigger or smaller (double-click the corner to reset), and drop a moved card on the highlighted band at the right edge to dock it back in place. When several people share their screens at once, the screens show side by side; click one to see only that screen. **Invite on WhatsApp** (next to Copy link, and in the settings menu) opens WhatsApp with the call link ready to send. The pop-out button on a camera opens a small always-on-top window with both cameras and a mic button, so you can keep seeing each other while working in another app. It uses Document Picture-in-Picture in Chrome and Edge, and falls back to the browser's video picture-in-picture in Safari.
 
 ## Pointers
 

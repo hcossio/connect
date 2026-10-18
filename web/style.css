@@ -245,6 +245,7 @@ input:focus, textarea:focus { border-color: #fff; }
 }
 .invite #inviteLink { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 .invite .btn { height: 50px; padding: 0 26px; font-size: 16px; }
+.invite .btn.wa { padding: 0 18px; }
 
 #remoteScreen { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; outline: none; background: #000; }
 #remoteScreen.controlling { cursor: crosshair; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
@@ -286,7 +287,7 @@ input:focus, textarea:focus { border-color: #fff; }
 .grid .tile { position: relative; border-radius: 18px; min-height: 0; }
 .grid[data-count="1"] { padding: 0; gap: 0; grid-template-columns: 100%; grid-auto-rows: 100%; }
 .grid[data-count="1"] .tile { border-radius: 0; }
-.grid[data-count="1"] .name-tag { left: 24px; bottom: 32px; font-size: 15px; padding: 8px 16px; }
+.stage[data-mode="cam"] .grid[data-count="1"] .name-tag { left: 24px; bottom: 32px; font-size: 15px; padding: 8px 16px; }
 .grid .tile.focused { outline: 2px solid #fff; outline-offset: -2px; }
 .share-tag {
   position: absolute; left: 10px; top: 10px; padding: 2px 10px; border-radius: 999px;
@@ -305,8 +306,9 @@ input:focus, textarea:focus { border-color: #fff; }
 /* With a mouse, the shared screen sits inside the frame, clear of the bars and the camera column. */
 @media (pointer: fine) {
   .stage[data-mode="screen"] #remoteScreen, .stage[data-mode="screen"] .pointers {
-    top: 80px; left: 20px; width: calc(100% - 288px); height: calc(100% - 196px); border-radius: 10px;
+    top: 80px; left: 20px; width: calc(100% - 40px - var(--strip-space, 248px)); height: calc(100% - 196px); border-radius: 10px;
   }
+  .stage .split-screens { top: 80px; left: 20px; right: auto; bottom: auto; width: calc(100% - 40px - var(--strip-space, 248px)); height: calc(100% - 196px); }
   .stage[data-mode="screen"] .screen-chip { left: 20px; bottom: 32px; }
 }
 .tile.self {
@@ -332,7 +334,42 @@ input:focus, textarea:focus { border-color: #fff; }
 }
 .tile:hover .tile-btn, .tile-btn:focus-visible { opacity: 1; }
 @media (hover: none) { .tile-btn { opacity: 1; } }
-.grid[data-count="1"] .tile-btn { top: 84px; right: 24px; }
+.stage[data-mode="cam"] .grid[data-count="1"] .tile-btn { top: 84px; right: 24px; }
+/* Corner grip to resize a floating tile; double-click resets it. */
+.resize-grip {
+  position: absolute; left: 0; bottom: 0; z-index: 3; width: 18px; height: 18px; cursor: nesw-resize; touch-action: none;
+  border-bottom-left-radius: inherit; opacity: 0; transition: opacity .15s;
+  background: linear-gradient(45deg, #fff 0 2px, transparent 2px 5px, #fff 5px 7px, transparent 7px) left bottom / 12px 12px no-repeat;
+}
+.tile.self:hover .resize-grip, .stage[data-mode="screen"] .grid:hover > .resize-grip, .resizing > .resize-grip { opacity: .9; }
+@media (hover: none) { .resize-grip { opacity: .7; } }
+.stage[data-mode="empty"] .resize-grip, .stage:not([data-mode="screen"]) .grid > .resize-grip { display: none; }
+.resizing { outline: 2px solid #fff; outline-offset: 2px; }
+/* Drop a dragged tile here to dock it back in its usual place. */
+.dock-zone {
+  position: absolute; top: 72px; right: 12px; bottom: 100px; width: calc(var(--w, 220px) + 24px); z-index: 1; pointer-events: none;
+  display: grid; place-items: center; border: 2px dashed rgba(255,255,255,.35); border-radius: 22px;
+  color: rgba(255,255,255,.6); font-size: 13px; font-weight: 600; transition: background .15s, border-color .15s;
+}
+.dock-zone span { padding: 4px 12px; border-radius: 999px; background: rgba(0,0,0,.55); }
+.dock-zone.armed { border-color: #fff; border-style: solid; background: rgba(255,255,255,.12); color: #fff; }
+.will-dock { outline: 2px solid #fff; outline-offset: 3px; }
+/* Several people sharing at once: their screens side by side. */
+.split-screens {
+  position: absolute; inset: 72px calc(var(--strip-space, 248px) + 20px) 100px 20px; z-index: 1; display: grid; gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr);
+}
+.split-screens[data-count="2"] { grid-template-rows: minmax(0, 1fr); }
+.split-screens[data-count="5"], .split-screens[data-count="6"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.split-item { position: relative; margin: 0; min-width: 0; min-height: 0; border-radius: 10px; overflow: hidden; background: #000; cursor: zoom-in; }
+.split-item video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.split-item figcaption {
+  position: absolute; left: 10px; bottom: 10px; max-width: calc(100% - 20px); padding: 4px 12px; border-radius: 999px;
+  background: rgba(40,40,40,.9); border: 1px solid rgba(255,255,255,.25); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.split-item:hover { outline: 2px solid rgba(255,255,255,.7); outline-offset: -2px; }
+.split-btn { position: absolute; left: 24px; bottom: 72px; z-index: 2; gap: 8px; }
+@media (pointer: fine) { .split-btn { left: 20px; bottom: 72px; } }
 /* While the cameras are popped out, don't show them twice. */
 .stage.popped .tile.self, .stage.popped[data-mode="screen"] .grid { display: none; }
 
@@ -422,8 +459,9 @@ input:focus, textarea:focus { border-color: #fff; }
 
 /* New messages float over the call while the chat is closed. */
 .chat-pops {
-  position: absolute; right: 24px; bottom: 120px; z-index: 9; display: grid; gap: 8px; justify-items: end;
-  width: min(320px, calc(100% - 48px));
+  /* Left of your camera card, so neither hides the other. */
+  position: absolute; right: calc(var(--strip-space, 248px) + 32px); bottom: 120px; z-index: 9; display: grid; gap: 8px; justify-items: end;
+  width: min(320px, calc(100% - var(--strip-space, 248px) - 56px));
 }
 .chat-pop {
   display: grid; gap: 2px; max-width: 100%; padding: 10px 16px; border: 1px solid var(--glass-line); border-radius: 18px;
@@ -551,6 +589,8 @@ dialog.ask menu .btn { height: 52px; font-size: 16px; }
   .invite { padding: 5px 5px 5px 18px; }
   .invite #inviteLink { font-size: 14px; }
   .invite .btn { height: 44px; padding: 0 18px; font-size: 14px; }
+  .invite .btn.wa { width: 44px; padding: 0; }
+  .invite .btn.wa .label { display: none; }
 
   .tile.self { top: calc(62px + env(safe-area-inset-top, 0px)); right: 12px; bottom: auto; width: 100px; aspect-ratio: 3 / 4; border-radius: 14px; }
   .stage[data-mode="screen"] .tile.self { top: auto; bottom: calc(96px + var(--safe-b)); width: 84px; right: 12px; }
@@ -558,8 +598,8 @@ dialog.ask menu .btn { height: 52px; font-size: 16px; }
   .stage[data-mode="screen"] .grid .tile { aspect-ratio: 3 / 4; border-radius: 12px; }
   .stage[data-mode="screen"] .grid .tile-btn, .tile.self .tile-btn { display: none; }
   .grid { padding: 64px 8px 100px; gap: 8px; }
-  .grid[data-count="1"] .name-tag { left: 14px; bottom: calc(100px + var(--safe-b)); font-size: 13px; padding: 5px 12px; }
-  .grid[data-count="1"] .tile-btn { top: auto; bottom: calc(100px + var(--safe-b)); right: 14px; }
+  .stage[data-mode="cam"] .grid[data-count="1"] .name-tag { left: 14px; bottom: calc(100px + var(--safe-b)); font-size: 13px; padding: 5px 12px; }
+  .stage[data-mode="cam"] .grid[data-count="1"] .tile-btn { top: auto; bottom: calc(100px + var(--safe-b)); right: 14px; }
   .share-tag { left: 6px; top: 6px; font-size: 10px; padding: 1px 7px; }
   .screen-chip { left: 12px; bottom: calc(96px + var(--safe-b)); font-size: 12px; }
   .banner { top: calc(58px + env(safe-area-inset-top, 0px)); left: 12px; right: 12px; transform: none; max-width: none; height: 44px; font-size: 13px; gap: 8px; padding-left: 14px; }
@@ -578,6 +618,10 @@ dialog.ask menu .btn { height: 52px; font-size: 16px; }
   .captions { bottom: calc(150px + var(--safe-b)); width: calc(100% - 24px); }
   .cc-line { font-size: 16px; }
   .chat-pops { bottom: calc(150px + var(--safe-b)); right: 12px; }
+  .stage[data-mode="screen"] .chat-pops { right: calc(var(--strip-space, 112px) - 4px); width: calc(100% - var(--strip-space, 112px) - 8px); }
+  .split-screens { top: calc(60px + env(safe-area-inset-top, 0px)); left: 8px; right: calc(var(--strip-space, 112px) - 8px); bottom: calc(140px + var(--safe-b)); grid-template-columns: 1fr !important; grid-auto-rows: 1fr; gap: 6px; }
+  .split-btn { left: 12px; bottom: calc(132px + var(--safe-b)); }
+  .resize-grip { width: 22px; height: 22px; }
 
   /* The dock spans the screen; buttons shrink to fit, and if there are still
      too many they scroll sideways instead of widening the page. */
@@ -714,6 +758,7 @@ button.link:hover { color: var(--muted); }
   display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border: 0; border-radius: 14px;
   background: transparent; color: #fff; font: inherit; font-size: 15px; text-align: left; cursor: pointer;
 }
+.opt { text-decoration: none; }
 .opt:hover { background: rgba(255,255,255,.08); }
 .opt > span:not(.switch) { flex: 1; }
 .opt .off-icon, .opt.off .on-icon { display: none; }

@@ -37,6 +37,7 @@
       <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
       <symbol id="i-back" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
       <symbol id="i-reload" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.5 0 4.9 1 6.7 2.8L21 8"/><path d="M21 3v5h-5"/></symbol>
+      <symbol id="i-whatsapp" viewBox="0 0 24 24"><path d="M3 21l1.65-3.8a9 9 0 1 1 3.4 2.9z"/><path transform="translate(7.3 7.3) scale(.4)" stroke-width="4" d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
       <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
       <symbol id="i-logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="var(--accent)" stroke="none"/><path d="M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z" fill="#fff" stroke="none"/></symbol>
     </defs>
@@ -92,12 +93,14 @@
           <div id="inviteBox">
             <div class="invite">
               <span id="inviteLink"></span>
+              <a id="waInvite" class="btn wa" href="https://wa.me/" target="_blank" rel="noopener" title="Send the link on WhatsApp"><svg class="icon"><use href="#i-whatsapp"/></svg><span class="label">WhatsApp</span></a>
               <button id="copyInviteBtn" class="btn primary" type="button">Copy link</button>
             </div>
           </div>
         </div>
 
         <video id="remoteScreen" autoplay playsinline hidden tabindex="0"></video>
+        <div id="splitScreens" class="split-screens" hidden></div>
         <section id="browserView" class="browser-view" hidden aria-label="Shared browser">
           <div class="browser-bar">
             <button id="bBack" class="bbtn" type="button" title="Back"><svg class="icon sm"><use href="#i-back"/></svg></button>
@@ -120,6 +123,7 @@
 
         <div id="grid" class="grid" hidden></div>
         <div id="screenChip" class="screen-chip" hidden></div>
+        <button id="splitBtn" class="btn sm split-btn" type="button" hidden><svg class="icon sm"><use href="#i-share"/></svg><span>Show all screens</span></button>
 
         <div id="selfTile" class="tile self">
           <video id="localCam" autoplay playsinline muted></video>
@@ -224,6 +228,9 @@
       </button>
     </footer>
     <div id="settingsMenu" class="settings-menu" role="menu" hidden>
+      <a id="waMenu" class="opt" href="https://wa.me/" role="menuitem" target="_blank" rel="noopener">
+        <svg class="icon"><use href="#i-whatsapp"/></svg><span>Invite on WhatsApp</span>
+      </a>
       <button id="speakerBtn" class="opt" type="button" role="menuitemcheckbox" aria-checked="true">
         <svg class="icon on-icon"><use href="#i-volume"/></svg><svg class="icon off-icon"><use href="#i-volume-x"/></svg><span>Sound</span><span class="switch"></span>
       </button>

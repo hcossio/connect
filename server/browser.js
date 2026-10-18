@@ -8,7 +8,9 @@ const dns = require('dns').promises;
 const W = 1280, H = 800;
 const MAX_SESSIONS = Number(process.env.BROWSER_MAX || 4);
 const ALLOW_PRIVATE = process.env.BROWSER_ALLOW_PRIVATE === '1'; // tests browse the local server
-const HOME = 'https://www.google.com/';
+// Google shows a captcha to most server addresses; DuckDuckGo doesn't.
+const HOME = 'https://duckduckgo.com/';
+const SEARCH = 'https://duckduckgo.com/?q=';
 
 function executable() {
   const found = [process.env.CHROMIUM_PATH, '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']
@@ -64,7 +66,7 @@ function toUrl(text) {
   if (!t) return HOME;
   if (/^https?:\/\//i.test(t)) return t;
   if (/^[^\s/]+\.[a-z]{2,}(:\d+)?(\/\S*)?$/i.test(t) || /^localhost(:\d+)?(\/|$)/i.test(t)) return 'https://' + t;
-  return 'https://www.google.com/search?q=' + encodeURIComponent(t);
+  return SEARCH + encodeURIComponent(t);
 }
 
 function send(ws, msg) { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); }

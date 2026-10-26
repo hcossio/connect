@@ -54,6 +54,16 @@ While someone shares their screen, **Pointers** shows where everyone is pointing
 
 **Browser** opens a web browser that runs on the server, so everyone in the call sees the same page without anyone sharing their screen. One person is in control at a time: whoever opened it starts in control, and anyone can press **Take over** (or type an address) to drive. Everyone's mouse over the page shows up for the others with their name. On a phone, tap to click, drag to scroll, and use the keyboard button to type. It needs Chromium on the server (`railpack.json` installs it on Railway; set `CHROMIUM_PATH` elsewhere). The browser can't open localhost or private network addresses (`BROWSER_ALLOW_PRIVATE=1` allows them for local testing), and at most `BROWSER_MAX` (default 4) calls can have one open at once. It presents itself as an everyday Chrome on Windows and searches with DuckDuckGo, but some sites still refuse visitors from cloud server addresses.
 
+## Drawing and the whiteboard
+
+**Draw** puts a toolbar over the screen on the stage: a marker, squares, circles and arrows (hold Shift for a perfect square or circle), seven colors and three widths. A shape you just drew shows corner handles to resize it, and the move tool picks up any of your drawings to move or resize it (Delete removes it, Ctrl+Z undoes). Everyone sees the drawings in place on their own device, phones included, because positions are kept as fractions of the screen. Whoever is sharing can press **See my screen** to watch their own screen with the drawings on it. Drawings on a screen go away when that person stops sharing.
+
+The host's toolbar also has the **whiteboard**, which takes the stage for everyone; anyone can draw on it and put images on it (the image button, or drop or paste an image). The host can **hide everyone else's drawings**, which also stops others drawing until it's turned back on, and **erase everyone's drawings** on the current screen or board. Someone who joins later gets the whiteboard and the drawings from the host. The code is in `web/board.js`.
+
+## People in the call
+
+Each name tag shows whether the person is on a phone or a computer, and a crossed-out mic when they're muted. **React** sends an emoji that floats up the stage and over your camera, and has **Raise hand**: a hand shows on your camera for everyone, and the host can lower it by clicking it. The host can mute anyone from the button on their camera, or everyone from the settings menu; only the person can unmute themselves. On a phone, Browser and Pointers move from the dock into the settings menu to make room. The code is in `web/people.js`.
+
 ## Transcript
 
 The person who started the meeting can turn on a transcript from the **Transcript** tab next to Chat and choose how voices are transcribed. Everyone else sees that it's on and reads along, with no settings to deal with. If the meeting starter leaves, the next person in the call gets the controls. Each person's browser transcribes only their own mic and shares the text, so every line carries the right name. Lines appear in the tab and as live captions over the stage, and **Download** saves them as a text file. Nothing is stored on the server.

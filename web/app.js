@@ -26,12 +26,15 @@ const state = {
   controlPending: null,     // helper side: the person we asked, waiting for an answer
   unread: 0,
   pointers: false,          // show mouse pointers on the shared screen
+  selfView: false,          // showing your own shared screen on the stage, to see drawings on it
   isHost: false,            // started the session: gets the "still there?" check and runs the transcript
   hostId: null,
   ended: false,
 };
 // The shared browser (see Shared browser below).
 const brw = { on: false, driver: null, driverName: null, url: '', loading: false, pending: null, drawing: false, mine: false };
+// Drawings on shared screens and the whiteboard (see board.js).
+const board = { wb: false, hide: false, items: new Map(), live: new Map(), drawing: false };
 /**
  * Everyone else in the call, by the id the server gave them.
  * @type {Map<number, { id: number, name: string, pc: RTCPeerConnection, dc: RTCDataChannel,
@@ -83,9 +86,12 @@ function updateStage() {
   if (sharers.length > 1 && state.sharers < 2 && !state.controlling) state.split = true;
   if (sharers.length < 2) state.split = false;
   state.sharers = sharers.length;
-  const split = !brw.on && state.split;
-  // The shared browser, while open, takes the stage over anyone's screen.
-  const focus = brw.on || split ? null : wanted?.screen ? wanted : sharers.at(-1) || null;
+  const covered = brw.on || board.wb; // the shared browser or the whiteboard takes the stage over anyone's screen
+  const split = !covered && state.split;
+  // Your own screen, when you asked to see it (to see what people draw on it).
+  if (state.selfView && !state.screenStream) state.selfView = false;
+  const self = state.selfView ? { id: state.myId, screen: state.screenStream, name: 'Your' } : null;
+  const focus = covered || split ? null : self || (wanted?.screen ? wanted : sharers.at(-1) || null);
   state.shownId = focus?.id ?? null;
   const screen = $('remoteScreen');
   if (focus) {
@@ -96,8 +102,8 @@ function updateStage() {
     screen.srcObject = null;
   }
   renderSplit(split ? sharers : []);
-  $('stage').dataset.mode = focus || brw.on || split ? 'screen' : peers.size ? 'cam' : 'empty';
-  $('emptyState').hidden = peers.size > 0 || brw.on;
+  $('stage').dataset.mode = focus || covered || split ? 'screen' : peers.size ? 'cam' : 'empty';
+  $('emptyState').hidden = peers.size > 0 || covered;
   $('grid').hidden = peers.size === 0;
   $('grid').dataset.count = peers.size;
   for (const p of peers.values()) {
@@ -106,7 +112,7 @@ function updateStage() {
     p.tile.title = p.screen && p !== focus ? `Show ${p.name}'s screen` : '';
   }
   $('screenChip').hidden = !focus;
-  if (focus) $('screenChip').textContent = `${focus.name}'s screen`;
+  if (focus) $('screenChip').textContent = focus === self ? 'Your screen' : `${focus.name}'s screen`;
   $('splitBtn').hidden = !focus || sharers.length < 2;
   $('splitBtn').querySelector('span').textContent = `Show all ${sharers.length} screens`;
   // Control follows the screen on the stage.
@@ -118,6 +124,7 @@ function updateStage() {
   layoutGrid();
   placeTiles();
   syncPointers();
+  syncBoard();
 }
 // Everyone's shared screens at once. Clicking one puts it on the stage alone.
 function renderSplit(list) {
@@ -195,7 +202,7 @@ function syncNoiseButtons() {
   }
 }
 for (const b of $$('.media-mic')) b.onclick = () => {
-  const t = state.camStream.getAudioTracks()[0]; if (t) t.enabled = !t.enabled; syncMediaButtons();
+  const t = state.camStream.getAudioTracks()[0]; if (t) t.enabled = !t.enabled; syncMediaButtons(); sendMe();
 };
 for (const b of $$('.media-cam')) b.onclick = () => {
   const t = state.camStream.getVideoTracks()[0]; if (t) t.enabled = !t.enabled; syncMediaButtons();
@@ -711,6 +718,8 @@ function addPeer(id, name, initiator) {
   p.dc.onopen = () => {
     if (state.screenStream) sendTo(id, { t: 'screen-on', streamId: state.screenStream.id });
     if (tx.on && state.isHost) sendTo(id, { t: 'transcribe', on: true, engine: tx.engine, lang: tx.lang, already: true });
+    sendMe(id);
+    if (state.isHost) sendBoard(id);
     updateControlBtn();
   };
   p.dc.onmessage = (e) => onData(p, JSON.parse(e.data));
@@ -794,6 +803,7 @@ function removePeer(id) {
   if (state.controlGrantedTo === id) revokeControl(false);
   if (state.controlRequestFrom === id) closeControlPrompts();
   dropPointer(p);
+  peerGone(p);
   p.splitEl?.remove();
   p.pc.close();
   p.tile.remove();
@@ -843,6 +853,7 @@ async function onSignal(msg) {
       tx.token = msg.token;
       tx.cloud = !!msg.cloud;
       syncTranscriptUI();
+      syncHostUI();
       for (const o of msg.peers) addPeer(o.id, o.name, true);
       if (state.isHost && !tx.on && !tx.asked) askTranscript();
       updateStage();
@@ -863,6 +874,7 @@ async function onSignal(msg) {
       state.hostId = msg.id;
       state.isHost = msg.id === state.myId;
       syncTranscriptUI();
+      syncHostUI();
       break;
     case 'browser': onBrowser(msg); break;
     case 'browser-frame': onBrowserFrame(msg.data); break;
@@ -927,6 +939,7 @@ function onData(p, m) {
       if (state.controlling === p.id) stopControl();
       if (p.screenStreamId) p.streams.delete(p.screenStreamId);
       p.screenStreamId = null;
+      clearBoard(`s${p.id}`);
       routeStreams(p);
       break;
     case 'control-request': onControlRequest(p); break;
@@ -959,6 +972,12 @@ function onData(p, m) {
     case 'bpointer': p.bpointer = m.off ? null : { x: +m.x, y: +m.y, driver: !!m.driver }; drawBrowserPointer(p); break;
     case 'transcribe': if (p.id === state.hostId) onTranscribe(p, m); break;
     case 'line': if (typeof m.text === 'string') addLine(p.name, m.text.slice(0, 2000), Number(m.at) || Date.now(), false, p.id); break;
+    case 'ann': onAnn(p, m); break;
+    case 'board': if (p.id === state.hostId) onBoard(m); break;
+    case 'me': onMe(p, m); break;
+    case 'react': onReact(p, m); break;
+    case 'hand-lower': if (p.id === state.hostId) setHand(false, p.name); break;
+    case 'mute': if (p.id === state.hostId) mutedByHost(p); break;
   }
 }
 
@@ -988,6 +1007,8 @@ function stopShare() {
   state.screenStream.getTracks().forEach((t) => t.stop());
   state.screenStream = null;
   broadcast({ t: 'screen-off' });
+  clearBoard(`s${state.myId}`);
+  updateStage();
   revokeControl();
   $('shareBtn').classList.remove('active');
   $('shareBtn').querySelector('.label').textContent = 'Share';
@@ -1546,6 +1567,7 @@ function applyZoom() {
   const t = s === 1 ? '' : `translate(${x}px, ${y}px) scale(${s})`;
   screenEl.style.transform = t;
   $('pointers').style.transform = t;
+  syncBoard();
 }
 function resetZoom() { touch.zoom = { s: 1, x: 0, y: 0 }; applyZoom(); }
 const pt = (t) => ({ clientX: t.clientX, clientY: t.clientY });

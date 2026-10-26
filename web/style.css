@@ -305,7 +305,7 @@ input:focus, textarea:focus { border-color: #fff; }
 }
 /* With a mouse, the shared screen sits inside the frame, clear of the bars and the camera column. */
 @media (pointer: fine) {
-  .stage[data-mode="screen"] #remoteScreen, .stage[data-mode="screen"] .pointers {
+  .stage[data-mode="screen"] #remoteScreen, .stage[data-mode="screen"] .pointers, .stage .whiteboard {
     top: 80px; left: 20px; width: calc(100% - 40px - var(--strip-space, 248px)); height: calc(100% - 196px); border-radius: 10px;
   }
   .stage .split-screens { top: 80px; left: 20px; right: auto; bottom: auto; width: calc(100% - 40px - var(--strip-space, 248px)); height: calc(100% - 196px); }
@@ -368,8 +368,10 @@ input:focus, textarea:focus { border-color: #fff; }
   background: rgba(40,40,40,.9); border: 1px solid rgba(255,255,255,.25); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .split-item:hover { outline: 2px solid rgba(255,255,255,.7); outline-offset: -2px; }
-.split-btn { position: absolute; left: 24px; bottom: 72px; z-index: 2; gap: 8px; }
-@media (pointer: fine) { .split-btn { left: 20px; bottom: 72px; } }
+.stage-btns { position: absolute; left: 24px; bottom: 72px; z-index: 3; display: flex; gap: 8px; }
+.stage-btns .btn { gap: 8px; }
+.stage-btns .btn[hidden] { display: none; }
+@media (pointer: fine) { .stage-btns { left: 20px; bottom: 72px; } }
 /* While the cameras are popped out, don't show them twice. */
 .stage.popped .tile.self, .stage.popped[data-mode="screen"] .grid { display: none; }
 
@@ -620,7 +622,7 @@ dialog.ask menu .btn { height: 52px; font-size: 16px; }
   .chat-pops { bottom: calc(150px + var(--safe-b)); right: 12px; }
   .stage[data-mode="screen"] .chat-pops { right: calc(var(--strip-space, 112px) - 4px); width: calc(100% - var(--strip-space, 112px) - 8px); }
   .split-screens { top: calc(60px + env(safe-area-inset-top, 0px)); left: 8px; right: calc(var(--strip-space, 112px) - 8px); bottom: calc(140px + var(--safe-b)); grid-template-columns: 1fr !important; grid-auto-rows: 1fr; gap: 6px; }
-  .split-btn { left: 12px; bottom: calc(132px + var(--safe-b)); }
+  .stage-btns { left: 12px; bottom: calc(132px + var(--safe-b)); }
   .resize-grip { width: 22px; height: 22px; }
 
   /* The dock spans the screen; buttons shrink to fit, and if there are still
@@ -834,3 +836,125 @@ button.link:hover { color: var(--muted); }
   .stage:has(.browser-view:not([hidden])) .tile.self { top: auto; left: 12px; right: auto; bottom: calc(104px + var(--safe-b)); width: 72px; }
   .stage:has(.browser-view:not([hidden])) .grid { top: auto; bottom: calc(104px + var(--safe-b)); width: 72px; flex-direction: column-reverse; }
 }
+
+/* ---------- Drawing on the screen and the whiteboard ---------- */
+.whiteboard { position: absolute; inset: 0; pointer-events: none; }
+.annot-layer { position: absolute; z-index: 1; pointer-events: none; transform-origin: 0 0; }
+.annot-layer canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.stage.drawing .annot-layer canvas { pointer-events: auto; touch-action: none; cursor: crosshair; }
+/* Leave room for the toolbar under the picture while drawing. */
+@media (pointer: fine) {
+  .stage.drawing[data-mode="screen"] #remoteScreen, .stage.drawing[data-mode="screen"] .pointers, .stage.drawing .whiteboard { height: calc(100% - 252px); }
+  .stage.drawing .screen-chip, .stage.drawing .stage-btns { display: none; }
+}
+.draw-bar {
+  position: absolute; z-index: 8; left: calc((100% - var(--strip-space, 248px)) / 2); bottom: 104px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; padding: 6px 8px; max-width: calc(100% - var(--strip-space, 248px) - 24px); overflow-x: auto; scrollbar-width: none;
+  border-radius: 18px; background: rgba(16,16,16,.92); border: 1px solid var(--glass-line);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); animation: toast-in .15s ease-out;
+}
+.draw-bar::-webkit-scrollbar { display: none; }
+.draw-bar[hidden] { display: none; }
+.db-group { display: flex; align-items: center; gap: 2px; flex: none; }
+.db-group[hidden], .db-btn[hidden] { display: none; }
+.db-sep { width: 1px; height: 24px; margin: 0 4px; background: rgba(255,255,255,.18); flex: none; }
+.draw-bar:not(.is-host) .host { display: none; }
+.db-btn {
+  width: 38px; height: 38px; display: grid; place-items: center; flex: none; padding: 0;
+  border: 0; border-radius: 12px; background: transparent; color: #fff; cursor: pointer;
+}
+.db-btn .icon { width: 20px; height: 20px; }
+.db-btn:hover { background: rgba(255,255,255,.1); }
+.db-btn.on { background: #fff; color: #000; }
+.db-btn.done { margin-left: 4px; background: rgba(255,255,255,.12); }
+.db-color, .db-size {
+  width: 30px; height: 30px; flex: none; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer;
+  display: grid; place-items: center;
+}
+.db-color::after { content: ""; width: 20px; height: 20px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px rgba(255,255,255,.35); }
+.db-color.on { box-shadow: 0 0 0 2px #fff; }
+.db-size::after { content: ""; width: var(--d); height: var(--d); border-radius: 50%; background: #fff; }
+.db-size.on { background: rgba(255,255,255,.18); }
+
+/* ---------- People: device, mic, hands, reactions ---------- */
+.name-tag { display: inline-flex; align-items: center; gap: 5px; }
+.name-tag .nt-name { overflow: hidden; text-overflow: ellipsis; }
+.name-tag .icon { width: 13px; height: 13px; flex: none; }
+.name-tag .dev-icon { opacity: .75; }
+.name-tag .mic-icon { color: #fff; }
+.hand-tag {
+  position: absolute; left: 10px; top: 10px; z-index: 2; width: 32px; height: 32px; display: grid; place-items: center;
+  padding: 0; border: 0; border-radius: 50%; background: #fff; color: #000; cursor: default; animation: hand-in .3s ease-out;
+}
+.hand-tag[hidden] { display: none; }
+.hand-tag:not(:disabled) { cursor: pointer; }
+.tile.peer .share-tag ~ .hand-tag { top: 34px; }
+.tile.peer .share-tag[hidden] ~ .hand-tag { top: 10px; }
+@keyframes hand-in { from { transform: translateY(8px) scale(.6); opacity: 0; } }
+.mute-btn { right: 48px; }
+.ctrl .hand-dot {
+  position: absolute; top: -4px; right: -4px; width: 20px; height: 20px; display: grid; place-items: center;
+  border-radius: 50%; background: #fff; color: #000; box-shadow: 0 0 0 2px #000;
+}
+.ctrl .hand-dot[hidden] { display: none; }
+.ctrl .hand-dot .icon { width: 12px; height: 12px; }
+.react-menu { gap: 6px; }
+.emoji-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.emoji {
+  height: 52px; border: 0; border-radius: 14px; background: transparent; font-size: 28px; line-height: 1; cursor: pointer;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; transition: transform .1s, background .15s;
+}
+.emoji:hover { background: rgba(255,255,255,.1); transform: scale(1.12); }
+.opt.active { background: #fff; color: #000; }
+.reactions { position: absolute; left: 24px; bottom: 130px; z-index: 9; width: 160px; height: 0; pointer-events: none; }
+.reaction {
+  position: absolute; left: var(--x); bottom: 0; display: grid; justify-items: start; gap: 2px;
+  animation: float-up 3.2s ease-out forwards;
+}
+.r-emoji { font-size: 40px; line-height: 1; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+.r-name { padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,.6); font-size: 12px; white-space: nowrap; }
+@keyframes float-up {
+  0% { transform: translateY(20px) scale(.6); opacity: 0; }
+  12% { transform: translateY(0) scale(1); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(-260px); opacity: 0; }
+}
+.tile-react {
+  position: absolute; left: 50%; top: 50%; z-index: 3; font-size: 44px; line-height: 1; pointer-events: none;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  animation: tile-pop 2.2s ease-out forwards;
+}
+@keyframes tile-pop {
+  0% { transform: translate(-50%, -50%) scale(.3); opacity: 0; }
+  15% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  25% { transform: translate(-50%, -50%) scale(1); }
+  75% { opacity: 1; }
+  100% { transform: translate(-50%, -90%); opacity: 0; }
+}
+
+@media (max-width: 640px) {
+  .whiteboard { top: calc(60px + env(safe-area-inset-top, 0px)); left: 8px; right: calc(var(--strip-space, 112px) - 4px); bottom: calc(210px + var(--safe-b)); width: auto; height: auto; }
+  .draw-bar {
+    left: 8px; right: 8px; bottom: calc(80px + var(--safe-b)); transform: none; max-width: none; padding: 4px 6px; border-radius: 16px;
+    flex-wrap: wrap; justify-content: center; row-gap: 2px;
+  }
+  .db-sep { display: none; }
+  .db-btn { width: 36px; height: 36px; }
+  .db-color, .db-size { width: 28px; height: 28px; }
+  .stage.drawing .stage-btns, .stage.drawing .screen-chip { display: none; }
+  .reactions { left: 12px; bottom: calc(150px + var(--safe-b)); }
+  .r-emoji { font-size: 34px; }
+  .hand-tag { width: 24px; height: 24px; left: 6px; top: 6px; }
+  .hand-tag .icon { width: 13px; height: 13px; }
+  .tile.peer .share-tag ~ .hand-tag { top: 26px; }
+  .tile.peer .share-tag[hidden] ~ .hand-tag { top: 6px; }
+  .name-tag .dev-icon { display: none; }
+  .stage[data-mode="cam"] .name-tag .dev-icon, .tile.self .name-tag .dev-icon { display: block; }
+  .emoji { height: 48px; font-size: 26px; }
+  /* Your camera moves up out of the toolbar's way. */
+  .stage.drawing[data-mode="screen"] .tile.self { bottom: calc(210px + var(--safe-b)); }
+  /* The dock has no room for these on a phone; they're in the settings menu instead. */
+  #browserBtn, #pointersBtn { display: none !important; }
+  .opt.phone-only:not([hidden]) { display: flex; }
+}
+.opt.phone-only { display: none; }

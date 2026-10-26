@@ -12,22 +12,6 @@ function sendMe(id) {
   const msg = { t: 'me', device: IS_PHONE ? 'phone' : 'desktop', mic: micOn(), hand: me.hand };
   if (id == null) broadcast(msg); else sendTo(id, msg);
   renderSelf();
-
-// ---------- Phones: dock buttons that live in the settings menu ----------
-// A phone's dock has no room for Browser and Pointers, so the settings menu
-// offers them; these mirror the dock buttons.
-function syncPhoneOpts() {
-  $('browserOpt').hidden = $('browserBtn').hidden;
-  $('browserOpt').querySelector('span').textContent = $('browserBtn').classList.contains('active') ? 'Close shared browser' : 'Shared browser';
-  $('pointersOpt').hidden = $('pointersBtn').hidden;
-  $('pointersOpt').classList.toggle('off', !state.pointers);
-  $('pointersOpt').setAttribute('aria-checked', String(state.pointers));
-}
-const dockWatch = new MutationObserver(syncPhoneOpts);
-for (const b of [$('browserBtn'), $('pointersBtn')]) dockWatch.observe(b, { attributes: true, attributeFilter: ['hidden', 'class'] });
-$('browserOpt').onclick = () => { setSettingsOpen(false); $('browserBtn').click(); };
-$('pointersOpt').onclick = () => $('pointersBtn').click();
-syncPhoneOpts();
 }
 function onMe(p, m) {
   const hadHand = p.hand;
@@ -171,18 +155,32 @@ function showReaction(name, e, tile) {
 }
 renderSelf();
 
-// ---------- Phones: dock buttons that live in the settings menu ----------
-// A phone's dock has no room for Browser and Pointers, so the settings menu
-// offers them; these mirror the dock buttons.
-function syncPhoneOpts() {
-  $('browserOpt').hidden = $('browserBtn').hidden;
-  $('browserOpt').querySelector('span').textContent = $('browserBtn').classList.contains('active') ? 'Close shared browser' : 'Shared browser';
-  $('pointersOpt').hidden = $('pointersBtn').hidden;
-  $('pointersOpt').classList.toggle('off', !state.pointers);
-  $('pointersOpt').setAttribute('aria-checked', String(state.pointers));
+
+// ---------- Tools menu: draw, pointers and the shared browser ----------
+const TOOLS = ['drawBtn', 'pointersBtn', 'browserBtn'];
+function setToolsOpen(open) {
+  $('toolsMenu').hidden = !open;
+  $('toolsBtn').classList.toggle('open', open);
+  $('toolsBtn').setAttribute('aria-expanded', String(open));
 }
-const dockWatch = new MutationObserver(syncPhoneOpts);
-for (const b of [$('browserBtn'), $('pointersBtn')]) dockWatch.observe(b, { attributes: true, attributeFilter: ['hidden', 'class'] });
-$('browserOpt').onclick = () => { setSettingsOpen(false); $('browserBtn').click(); };
-$('pointersOpt').onclick = () => $('pointersBtn').click();
-syncPhoneOpts();
+$('toolsBtn').onclick = () => setToolsOpen($('toolsMenu').hidden);
+addEventListener('pointerdown', (e) => {
+  if (!$('toolsMenu').hidden && !e.target.closest('#toolsMenu, #toolsBtn')) setToolsOpen(false);
+});
+addEventListener('keydown', (e) => { if (e.key === 'Escape') setToolsOpen(false); });
+// Draw and the browser change the whole stage, so the menu gets out of the way.
+for (const id of ['drawBtn', 'browserBtn']) $(id).addEventListener('click', () => setToolsOpen(false));
+// The switches follow each tool's state, and a dot on Tools shows one is on.
+function syncTools() {
+  let any = false;
+  for (const id of TOOLS) {
+    const on = $(id).classList.contains('active');
+    $(id).setAttribute('aria-checked', String(on));
+    if (on && !$(id).hidden) any = true;
+  }
+  $('toolsDot').hidden = !any;
+  $('toolsBtn').classList.toggle('active', any);
+}
+const toolsWatch = new MutationObserver(syncTools);
+for (const id of TOOLS) toolsWatch.observe($(id), { attributes: true, attributeFilter: ['class', 'hidden'] });
+syncTools();

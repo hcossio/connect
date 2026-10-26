@@ -29,6 +29,7 @@
       <symbol id="i-send" viewBox="0 0 24 24"><path d="M14.5 21.7a.5.5 0 0 0 .9 0l6.5-19a.5.5 0 0 0-.6-.6l-19 6.5a.5.5 0 0 0 0 .9l7.9 3.2a2 2 0 0 1 1.1 1.1z"/><path d="m21.9 2.1-10.9 11"/></symbol>
       <symbol id="i-voice" viewBox="0 0 24 24"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></symbol>
       <symbol id="i-popout" viewBox="0 0 24 24"><path d="M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"/><rect width="10" height="7" x="12" y="13" rx="2"/></symbol>
+      <symbol id="i-shapes" viewBox="0 0 24 24"><path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/></symbol>
       <symbol id="i-pen" viewBox="0 0 24 24"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></symbol>
       <symbol id="i-square" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/></symbol>
       <symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/></symbol>
@@ -260,17 +261,11 @@
       <button id="shareBtn" class="ctrl" type="button" title="Share your screen">
         <svg class="icon"><use href="#i-share"/></svg><span class="label">Share</span>
       </button>
-      <button id="browserBtn" class="ctrl" type="button" title="Open a browser everyone in the call can see and use" hidden>
-        <svg class="icon"><use href="#i-globe"/></svg><span class="label">Browser</span>
-      </button>
       <button id="controlBtn" class="ctrl" type="button" title="Ask to control their computer" disabled>
         <svg class="icon"><use href="#i-pointer"/></svg><span class="label">Control</span>
       </button>
-      <button id="pointersBtn" class="ctrl" type="button" title="Show everyone's mouse pointers on the shared screen" hidden>
-        <svg class="icon"><use href="#i-cursors"/></svg><span class="label">Pointers</span><span id="myColor" class="swatch"></span>
-      </button>
-      <button id="drawBtn" class="ctrl" type="button" title="Draw on the shared screen or the whiteboard">
-        <svg class="icon"><use href="#i-pen"/></svg><span class="label">Draw</span>
+      <button id="toolsBtn" class="ctrl" type="button" title="Draw, pointers and the shared browser" aria-haspopup="menu" aria-expanded="false">
+        <svg class="icon"><use href="#i-shapes"/></svg><span class="label">Tools</span><span id="toolsDot" class="tools-dot" hidden></span>
       </button>
       <button id="reactBtn" class="ctrl" type="button" title="Reactions and raise your hand" aria-haspopup="menu" aria-expanded="false">
         <svg class="icon"><use href="#i-smile"/></svg><span class="label">React</span><span id="handDot" class="hand-dot" hidden><svg class="icon"><use href="#i-hand"/></svg></span>
@@ -291,13 +286,18 @@
         <svg class="icon"><use href="#i-hand"/></svg><span>Raise hand</span>
       </button>
     </div>
+    <div id="toolsMenu" class="settings-menu tools-menu" role="menu" hidden>
+      <button id="drawBtn" class="opt" type="button" role="menuitemcheckbox" title="Draw on the shared screen or the whiteboard">
+        <svg class="icon"><use href="#i-pen"/></svg><span>Draw</span><span class="switch"></span>
+      </button>
+      <button id="pointersBtn" class="opt" type="button" role="menuitemcheckbox" title="Show everyone's mouse pointers on the shared screen" hidden>
+        <svg class="icon"><use href="#i-cursors"/></svg><span>Pointers <i id="myColor" class="swatch"></i></span><span class="switch"></span>
+      </button>
+      <button id="browserBtn" class="opt" type="button" role="menuitemcheckbox" title="Open a browser everyone in the call can see and use" hidden>
+        <svg class="icon"><use href="#i-globe"/></svg><span>Shared browser</span><span class="switch"></span>
+      </button>
+    </div>
     <div id="settingsMenu" class="settings-menu" role="menu" hidden>
-      <button id="browserOpt" class="opt phone-only" type="button" role="menuitem" hidden>
-        <svg class="icon"><use href="#i-globe"/></svg><span>Shared browser</span>
-      </button>
-      <button id="pointersOpt" class="opt phone-only off" type="button" role="menuitemcheckbox" hidden>
-        <svg class="icon"><use href="#i-cursors"/></svg><span>Pointers</span><span class="switch"></span>
-      </button>
       <button id="muteAllBtn" class="opt" type="button" role="menuitem" hidden>
         <svg class="icon"><use href="#i-mic-off"/></svg><span>Mute everyone</span>
       </button>

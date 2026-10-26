@@ -206,7 +206,8 @@ loadProfile();
 refresh();
 loadScheduled();
 loadRecordings();
-setInterval(() => { if (!$('dashboard').hidden) { refresh(); loadRecordings(); } }, 10_000);
+loadConnLogs();
+setInterval(() => { if (!$('dashboard').hidden) { refresh(); loadRecordings(); loadConnLogs(); } }, 10_000);
 
 function say(el, ok, text) {
   $(el).hidden = false;
@@ -312,3 +313,82 @@ async function loadRecordings() {
 }
 $('recClose').onclick = () => $('recDialog').close();
 $('recDialog').addEventListener('close', () => { $('recVideo').pause(); $('recVideo').removeAttribute('src'); $('recVideo').load(); });
+
+// ---------- Connection logs ----------
+// How each call in a meeting connected, or why it didn't: kept for 7 days.
+const browserOf = (ua = '') => {
+  const os = /iPhone|iPad|iPod/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : '';
+  const b = /EdgA?\//.test(ua) ? 'Edge' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : '';
+  return [b, os].filter(Boolean).join(' on ');
+};
+const PATHS = { host: 'direct on the same network', srflx: 'direct over the internet', prflx: 'direct over the internet', relay: 'through the relay' };
+const counts = (o) => Object.entries(o || {}).map(([k, v]) => `${k} ${v}`).join(', ') || 'none';
+function describe(e) {
+  const dev = e.device === 'phone' ? 'a phone' : 'a computer';
+  switch (e.ev) {
+    case 'join': return `${e.who} joined from ${dev}${e.ua ? ` (${browserOf(e.ua)})` : ''}${e.relay ? '' : ', no relay available'}`;
+    case 'leave': return `${e.who} left after ${fmtDuration((e.after || 0) * 1000)}`;
+    case 'full': return `${e.who} couldn't join: the room was full`;
+    case 'video': return `${e.who}'s video report about ${e.data?.about || 'someone'}`;
+    case 'conn': {
+      const to = `${e.who} → ${e.about}`;
+      const net = e.net?.type ? ` on ${e.net.type === 'cellular' ? 'mobile data' : e.net.type}` : ''; // only Android says which
+      if (e.state === 'connected') {
+        const how = PATHS[e.pair?.local] || 'connected';
+        return `${to}: connected ${how}${e.pair?.protocol ? ` (${e.pair.protocol})` : ''}${e.pair?.rtt != null ? `, ${Math.round(e.pair.rtt * 1000)} ms` : ''}${net}${e.restarts ? ` after ${e.restarts} retr${e.restarts === 1 ? 'y' : 'ies'}` : ''}`;
+      }
+      const what = e.state === 'failed' ? 'failed' : e.state === 'slow' ? 'still connecting' : 'disconnected';
+      return `${to}: ${what} after ${e.secs} s${net}. Paths found here: ${counts(e.cands)}; from them: ${counts(e.remoteCands)}${e.relayOffered ? '' : '; no relay offered'}${e.errors ? `; ${e.errors.length} network error${e.errors.length === 1 ? '' : 's'}` : ''}`;
+    }
+    default: return `${e.who || ''} ${e.ev}`;
+  }
+}
+const isBad = (e) => e.ev === 'full' || (e.ev === 'conn' && e.state !== 'connected');
+
+async function loadConnLogs() {
+  const r = await fetch('/api/admin/connlogs').then((x) => (x.ok ? x.json() : null)).catch(() => null);
+  if (!r) return;
+  $('turnNote').textContent = r.turn.relay
+    ? 'The relay is on: calls that can\'t connect directly go through it.'
+    : r.turn.configured
+      ? `The relay is set up but not working${r.turn.error ? ` (${r.turn.error})` : ''}. Calls on networks that block direct connections will fail.`
+      : 'No relay is set up, so calls on networks that block direct connections (many mobile carriers) will fail.';
+  fill('connRows', 'connEmpty', r.meetings.map((m) => {
+    const people = m.people.map((p) => `${p.name}${p.device === 'phone' ? ' (phone)' : ''}`).join(', ') || '–';
+    const calls = document.createElement('span');
+    calls.textContent = m.failed ? `${m.failed} failed` : 'All connected';
+    if (m.failed) calls.className = 'conn-bad';
+    if (m.relayed) calls.textContent += `, ${m.relayed} relayed`;
+    const view = Object.assign(document.createElement('button'), { type: 'button', className: 'btn sm', textContent: 'View' });
+    view.onclick = () => openConnLog(m);
+    return [roomCell(m), fmtWhen(m.first), people, calls, view];
+  }));
+}
+let connShown = null;
+async function openConnLog(m) {
+  const list = await fetch(`/api/admin/connlogs/${encodeURIComponent(m.id)}`).then((x) => (x.ok ? x.json() : []));
+  connShown = { m, list };
+  $('connTitle').textContent = m.title || m.room;
+  $('connMeta').textContent = `${fmtWhen(m.first)} · ${list.length} events`;
+  $('connLines').replaceChildren(...list.map((e) => {
+    const d = document.createElement('details');
+    d.className = `conn-line${isBad(e) ? ' bad' : ''}`;
+    const sum = document.createElement('summary');
+    sum.append(Object.assign(document.createElement('span'), { className: 'muted small', textContent: new Date(e.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) }), describe(e));
+    const pre = document.createElement('pre');
+    const { t, m: _m, room, title, ...rest } = e;
+    pre.textContent = JSON.stringify(rest, null, 2);
+    d.append(sum, pre);
+    return d;
+  }));
+  if (!$('connDialog').open) $('connDialog').showModal();
+}
+$('connClose').onclick = () => $('connDialog').close();
+$('connDl').onclick = () => {
+  if (!connShown) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([connShown.list.map((e) => JSON.stringify(e)).join('\n')], { type: 'application/x-ndjson' }));
+  a.download = `connections-${connShown.m.room}-${new Date(connShown.m.first).toISOString().slice(0, 10)}.jsonl`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};

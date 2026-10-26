@@ -157,7 +157,7 @@ renderSelf();
 
 
 // ---------- Tools menu: draw, pointers and the shared browser ----------
-const TOOLS = ['drawBtn', 'pointersBtn', 'browserBtn'];
+const TOOLS = ['drawBtn', 'pointersBtn', 'controlBtn', 'browserBtn'];
 function setToolsOpen(open) {
   $('toolsMenu').hidden = !open;
   $('toolsBtn').classList.toggle('open', open);
@@ -169,7 +169,7 @@ addEventListener('pointerdown', (e) => {
 });
 addEventListener('keydown', (e) => { if (e.key === 'Escape') setToolsOpen(false); });
 // Draw and the browser change the whole stage, so the menu gets out of the way.
-for (const id of ['drawBtn', 'browserBtn']) $(id).addEventListener('click', () => setToolsOpen(false));
+for (const id of ['drawBtn', 'controlBtn', 'browserBtn']) $(id).addEventListener('click', () => setToolsOpen(false));
 // The switches follow each tool's state, and a dot on Tools shows one is on.
 function syncTools() {
   let any = false;
@@ -182,5 +182,5 @@ function syncTools() {
   $('toolsBtn').classList.toggle('active', any);
 }
 const toolsWatch = new MutationObserver(syncTools);
-for (const id of TOOLS) toolsWatch.observe($(id), { attributes: true, attributeFilter: ['class', 'hidden'] });
+for (const id of TOOLS) toolsWatch.observe($(id), { attributes: true, attributeFilter: ['class', 'hidden', 'disabled'] });
 syncTools();

@@ -81,6 +81,16 @@
       </table></div>
       <p id="recEmpty" class="muted small" hidden>No recordings yet. Remote control sessions you run while signed in are recorded here.</p>
     </section>
+
+    <section class="panel">
+      <h2>Connection logs <span class="muted small">(last 7 days)</span></h2>
+      <p id="turnNote" class="muted small"></p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Meeting</th><th>Started</th><th>People</th><th>Calls</th><th></th></tr></thead>
+        <tbody id="connRows"></tbody>
+      </table></div>
+      <p id="connEmpty" class="muted small" hidden>Nothing yet. Each meeting's joins, leaves and how every call connected show up here.</p>
+    </section>
   </main>
 
   <main id="profile" class="admin-main narrow" hidden>
@@ -140,6 +150,15 @@
       <button id="recClose" class="btn sm" type="button">Close</button>
     </header>
     <video id="recVideo" controls playsinline></video>
+  </dialog>
+  <dialog id="connDialog" class="tx-dialog conn-dialog">
+    <header class="tx-dialog-head">
+      <div><h2 id="connTitle">Connection log</h2><p id="connMeta" class="muted small"></p></div>
+      <span class="spacer"></span>
+      <button id="connDl" class="btn sm" type="button">Download</button>
+      <button id="connClose" class="btn sm" type="button">Close</button>
+    </header>
+    <div class="tx-body"><div id="connLines" class="conn-lines"></div></div>
   </dialog>
   <script src="/admin.js"></script>
 </body>

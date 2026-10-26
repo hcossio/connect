@@ -747,6 +747,16 @@ button.link:hover { color: var(--muted); }
 .rec[hidden] { display: none; }
 @keyframes rec-blink { 50% { opacity: .25; } }
 .tx-dialog.rec-dialog { grid-template-rows: auto auto; height: auto; width: min(1100px, calc(100% - 32px)); }
+.tx-dialog.conn-dialog { grid-template-rows: auto 1fr; width: min(980px, calc(100% - 32px)); }
+.conn-lines { display: grid; gap: 2px; }
+.conn-line summary { cursor: pointer; padding: 6px 8px; border-radius: 6px; display: flex; gap: 12px; align-items: baseline; list-style: none; line-height: 1.4; }
+.conn-line summary::-webkit-details-marker { display: none; }
+.conn-line summary > .muted { flex: none; width: 92px; }
+.conn-line summary:hover { background: rgba(255,255,255,.06); }
+.conn-line.bad summary { font-weight: 600; }
+.conn-line.bad summary::before { content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%; background: #fff; align-self: center; margin-right: -4px; }
+.conn-line pre { margin: 2px 0 8px 112px; padding: 10px 12px; background: rgba(255,255,255,.05); border-radius: 8px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+.conn-bad { font-weight: 600; }
 .rec-dialog video { width: 100%; max-height: calc(100vh - 180px); background: #000; display: block; }
 
 /* ---------- Settings menu (gear in the dock) ---------- */
@@ -953,8 +963,14 @@ button.link:hover { color: var(--muted); }
   .emoji { height: 48px; font-size: 26px; }
   /* Your camera moves up out of the toolbar's way. */
   .stage.drawing[data-mode="screen"] .tile.self { bottom: calc(210px + var(--safe-b)); }
-  /* The dock has no room for these on a phone; they're in the settings menu instead. */
-  #browserBtn, #pointersBtn { display: none !important; }
-  .opt.phone-only:not([hidden]) { display: flex; }
 }
-.opt.phone-only { display: none; }
+/* Tools menu: Draw, Pointers and the shared browser, each a switch. */
+.tools-menu .opt[hidden] { display: none; }
+.tools-menu .opt:not(.active) .switch { background: #3a3a3a; }
+.tools-menu .opt:not(.active) .switch::after { left: 3px; background: #a3a3a3; }
+.tools-menu .opt.active { background: transparent; color: #fff; }
+.tools-menu .opt.active:hover { background: rgba(255,255,255,.08); }
+.tools-menu .swatch { display: inline-block; width: 9px; height: 9px; margin-left: 6px; border-radius: 50%; background: var(--c, transparent); box-shadow: 0 0 0 2px #fff; vertical-align: middle; }
+.ctrl .tools-dot { position: absolute; top: 2px; right: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px #000; }
+.ctrl .tools-dot[hidden] { display: none; }
+.ctrl.active .tools-dot { background: #000; box-shadow: 0 0 0 2px #fff; }

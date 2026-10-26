@@ -48,7 +48,9 @@ With nobody sharing, everyone else's cameras fill the stage as a grid. Your came
 
 ## Pointers
 
-While someone shares their screen, **Pointers** shows where everyone is pointing. Each person turns it on for themselves and gets their own color (the dot on the button), and their mouse over the shared screen appears, with their name, for everyone else who has it on. The person sharing sees the pointers drawn on their real screen when DevAssist Helper (0.1.2 or later) is open: it shows them in a transparent window that clicks pass through. Pointers are hidden while you are controlling, since the real mouse is moving then.
+**Pointers**, **Draw** and **Browser** are switches in the **Tools** menu (the shapes button in the dock); a dot on it shows one is on.
+
+While someone shares their screen, **Pointers** shows where everyone is pointing. Each person turns it on for themselves and gets their own color (the dot next to it in the menu), and their mouse over the shared screen appears, with their name, for everyone else who has it on. The person sharing sees the pointers drawn on their real screen when DevAssist Helper (0.1.2 or later) is open: it shows them in a transparent window that clicks pass through. Pointers are hidden while you are controlling, since the real mouse is moving then.
 
 ## Shared browser
 
@@ -62,7 +64,7 @@ The host's toolbar also has the **whiteboard**, which takes the stage for everyo
 
 ## People in the call
 
-Each name tag shows whether the person is on a phone or a computer, and a crossed-out mic when they're muted. **React** sends an emoji that floats up the stage and over your camera, and has **Raise hand**: a hand shows on your camera for everyone, and the host can lower it by clicking it. The host can mute anyone from the button on their camera, or everyone from the settings menu; only the person can unmute themselves. On a phone, Browser and Pointers move from the dock into the settings menu to make room. The code is in `web/people.js`.
+Each name tag shows whether the person is on a phone or a computer, and a crossed-out mic when they're muted. **React** sends an emoji that floats up the stage and over your camera, and has **Raise hand**: a hand shows on your camera for everyone, and the host can lower it by clicking it. The host can mute anyone from the button on their camera, or everyone from the settings menu; only the person can unmute themselves. The code is in `web/people.js`.
 
 ## Transcript
 
@@ -119,8 +121,20 @@ npm run agent        # on the computer that will be controlled
 
 Open `http://localhost:3000/login`, sign in as `marcah` with that password, start a room, and send the invite link. For use
 across the internet, serve it over HTTPS (camera and screen APIs require a
-secure origin) and add a TURN server to `ICE_SERVERS` in `web/app.js`
-(coturn, or a hosted one) or calls behind strict NATs will fail.
+secure origin) and set up a relay (below) or calls behind strict NATs will fail.
+
+### Relay (TURN) for networks that block direct calls
+
+Calls connect browser to browser. Many mobile carriers, and laptops on a phone's hotspot, sit behind a shared carrier address (carrier-grade NAT) that blocks that, and the call shows **Connection failed** unless a relay forwards the media. The server hands each browser the relay's details when it joins; set one of:
+
+- `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_TOKEN`: a TURN key from Cloudflare (dashboard, Realtime, TURN Server, Create). The server asks Cloudflare for credentials that last a day and renews them. The first 1,000 GB a month are free.
+- `TURN_URLS` (comma-separated `turn:` / `turns:` URLs) with `TURN_USERNAME` and `TURN_CREDENTIAL`, or with `TURN_SECRET` for coturn's `use-auth-secret`.
+
+Without one, only STUN is used and those calls fail. Calls that can connect directly still do; only the ones that can't use the relay. A call whose path breaks (say, a phone moving from wifi to mobile data) looks for a new one on its own.
+
+### Connection logs
+
+Each meeting's joins and leaves (phone or computer, browser), and how every call in it connected (direct or through the relay, round-trip time) or why it failed (the network paths each side found, network errors), are kept for 7 days in `DATA_DIR/connlogs/`, one file per day. The admin page lists them under **Connection logs**, with each meeting's events and a download.
 
 ### Helper app
 
@@ -159,9 +173,8 @@ needs X11 (Wayland blocks synthetic input).
 ## Roadmap
 
 1. Code-sign the helper for Windows and Mac.
-2. TURN server and HTTPS deploy.
-3. Multi-monitor selection and window-relative control.
-4. Optional: file transfer over the data channel, session recording, auth.
+2. Multi-monitor selection and window-relative control.
+3. Optional: file transfer over the data channel, session recording, auth.
 
 ## License
 

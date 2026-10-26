@@ -7,7 +7,8 @@
 
 const $ = (id) => document.getElementById(id);
 const $$ = (sel) => document.querySelectorAll(sel);
-const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }]; // add a TURN server for production
+// Until the server sends its list (with a relay for networks that block direct calls).
+const ICE_SERVERS = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }];
 const AGENT_URL = 'ws://127.0.0.1:47800';
 const CAN_SHARE = !!navigator.mediaDevices?.getDisplayMedia;
 const isWide = () => matchMedia('(min-width: 1025px)').matches;
@@ -692,12 +693,13 @@ function signal(msg) { state.ws?.readyState === 1 && state.ws.send(JSON.stringif
 // either side.
 function addPeer(id, name, initiator) {
   if (peers.has(id)) return peers.get(id);
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const pc = new RTCPeerConnection({ iceServers: state.iceServers || ICE_SERVERS });
   // importNode, not cloneNode: a video cloned out of the inert template document never paints in iOS Safari.
   const tile = document.importNode($('peerTileTpl').content, true).firstElementChild;
   const p = {
     id, name, pc, dc: null, polite: state.myId > id, makingOffer: false, ignoreOffer: false, waitForOffer: !initiator,
     streams: new Map(), cam: null, screen: null, screenStreamId: null, sharedAt: 0, tile,
+    cands: {}, iceErrors: [], restarts: 0, since: Date.now(),
   };
   peers.set(id, p);
   (state.met ||= new Set()).add(name);
@@ -724,7 +726,16 @@ function addPeer(id, name, initiator) {
   };
   p.dc.onmessage = (e) => onData(p, JSON.parse(e.data));
 
-  pc.onicecandidate = ({ candidate }) => candidate && signal({ type: 'ice', to: id, candidate });
+  pc.onicecandidate = ({ candidate }) => {
+    if (!candidate) return;
+    p.cands[candidate.type || 'other'] = (p.cands[candidate.type || 'other'] || 0) + 1;
+    signal({ type: 'ice', to: id, candidate });
+  };
+  pc.onicecandidateerror = (e) => {
+    if (p.iceErrors.length < 8) p.iceErrors.push({ url: e.url, code: e.errorCode, text: String(e.errorText || '').slice(0, 80) });
+  };
+  // Still not connected after 20 seconds: say so in the log while it keeps trying.
+  setTimeout(() => { if (peers.get(id) === p && pc.connectionState !== 'connected') reportConn(p, 'slow'); }, 20_000);
   pc.onnegotiationneeded = async () => {
     if (p.waitForOffer) return; // fires again once their offer has been answered, if still needed
     try {
@@ -746,9 +757,44 @@ function addPeer(id, name, initiator) {
   };
   pc.onconnectionstatechange = () => {
     updateStatus();
-    if (pc.connectionState === 'connected') { setTimeout(() => sendDiag(p), 4000); setTimeout(() => sendDiag(p), 15000); }
+    const st = pc.connectionState;
+    if (st === 'connected') { setTimeout(() => sendDiag(p), 4000); setTimeout(() => sendDiag(p), 15000); }
+    if (st === 'connected' || st === 'failed' || st === 'disconnected') reportConn(p, st);
+    // A network change (wifi to mobile data) or a path that stopped working:
+    // look for a new one. One side does it so the two don't cross.
+    if (st === 'failed' && !p.polite && p.restarts < 3) { p.restarts++; pc.restartIce(); }
   };
   return p;
+}
+
+// How a call connected (direct, or through the relay) or why it didn't, for
+// the connection logs in the admin page.
+async function reportConn(p, st) {
+  if (!peers.has(p.id) || state.ended) return;
+  const data = {
+    about: p.name, aboutId: p.id, state: st, ice: p.pc.iceConnectionState, gathering: p.pc.iceGatheringState,
+    secs: Math.round((Date.now() - p.since) / 1000), restarts: p.restarts, cands: p.cands,
+    relayOffered: (state.iceServers || []).some((s) => [].concat(s.urls).some((u) => /^turns?:/.test(u))),
+    net: navigator.connection ? { type: navigator.connection.type, eff: navigator.connection.effectiveType, down: navigator.connection.downlink, rtt: navigator.connection.rtt } : undefined,
+    errors: p.iceErrors.length ? p.iceErrors : undefined,
+  };
+  try {
+    const stats = await p.pc.getStats();
+    let pair = null;
+    stats.forEach((s) => { if (s.type === 'transport' && s.selectedCandidatePairId) pair = stats.get(s.selectedCandidatePairId); });
+    if (!pair) stats.forEach((s) => { if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') pair = s; });
+    if (pair) {
+      const l = stats.get(pair.localCandidateId), r = stats.get(pair.remoteCandidateId);
+      data.pair = { local: l?.candidateType, remote: r?.candidateType, protocol: l?.protocol, relayProtocol: l?.relayProtocol, network: l?.networkType, rtt: pair.currentRoundTripTime };
+    }
+    let tried = 0;
+    stats.forEach((s) => { if (s.type === 'candidate-pair') tried++; });
+    data.pairsTried = tried;
+    const remote = {};
+    stats.forEach((s) => { if (s.type === 'remote-candidate') remote[s.candidateType] = (remote[s.candidateType] || 0) + 1; });
+    data.remoteCands = remote;
+  } catch {}
+  signal({ type: 'conn', data });
 }
 
 // What this browser is doing with someone's video, sent to the server log so
@@ -850,6 +896,7 @@ async function onSignal(msg) {
       state.hostId = msg.hostId;
       $('myColor').style.setProperty('--c', colorOf(msg.id));
       $('browserBtn').hidden = !msg.browser;
+      if (msg.ice?.length) state.iceServers = msg.ice;
       tx.token = msg.token;
       tx.cloud = !!msg.cloud;
       syncTranscriptUI();

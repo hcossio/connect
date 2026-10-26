@@ -13,6 +13,8 @@ const auth = require('./auth');
 const summary = require('./summary');
 const sharedBrowser = require('./browser');
 const preview = require('./preview');
+const turn = require('./turn');
+const connlog = require('./connlog');
 
 const PORT = process.env.PORT || 3000;
 // Each person sends their camera to everyone else, so small groups only.
@@ -289,6 +291,9 @@ app.post('/api/recordings/:id/end', (req, res) => {
   pruneRecordings();
   res.json({ ok: true });
 });
+// Connection logs for the last 7 days, one row per meeting, and each meeting's events.
+app.get('/api/admin/connlogs', auth.requireAdmin, (_req, res) => res.json({ days: connlog.KEEP_DAYS, turn: turn.status(), meetings: connlog.meetings() }));
+app.get('/api/admin/connlogs/:id', auth.requireAdmin, (req, res) => res.json(connlog.forMeeting(req.params.id)));
 app.get('/api/admin/recordings', auth.requireAdmin, (_req, res) => {
   res.json(store.data.recordings.filter((r) => r.bytes).slice().reverse().map(publicRec));
 });
@@ -402,6 +407,9 @@ function endSession(room, reason, leaver) {
 
 wss.on('connection', (ws, req) => {
   ws.user = auth.userFrom(req); // signed in: allowed to start meetings
+  ws.ua = String(req.headers['user-agent'] || '').slice(0, 300);
+  ws.device = /Android|iPhone|iPad|iPod|Mobile/i.test(ws.ua) ? 'phone' : 'desktop';
+  ws.logged = 0; // connection reports from this browser, capped below
   /** @type {Room | null} */
   let room = null;
   ws.isAlive = true;
@@ -410,6 +418,7 @@ wss.on('connection', (ws, req) => {
   // Join the room for real: get a token and meet everyone in it.
   function enter(r) {
     ws.token = crypto.randomUUID();
+    ws.joinedAt = Date.now();
     callers.set(ws.token, ws);
     room = r;
     ws.meeting = r.meeting;
@@ -418,7 +427,8 @@ wss.on('connection', (ws, req) => {
     r.meeting.peak = Math.max(r.meeting.peak, r.peers.size + 1);
     const others = [...r.peers].map((p) => ({ id: p.peerId, name: p.displayName }));
     r.peers.add(ws);
-    send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY, title: r.meeting.title, waitingRoom: r.waitingRoom, browser: sharedBrowser.available() });
+    send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY, title: r.meeting.title, waitingRoom: r.waitingRoom, browser: sharedBrowser.available(), ice: turn.iceServers() });
+    connlog.log(r.meeting, 'join', { who: ws.displayName, id: ws.peerId, device: ws.device, ua: ws.ua, signedIn: !!ws.user, relay: turn.hasRelay(), people: r.peers.size });
     sharedBrowser.joined(r, ws);
     for (const p of r.peers) if (p !== ws) send(p, { type: 'peer-joined', id: ws.peerId, name: ws.displayName });
     // Someone who can admit people just arrived: show them who's waiting.
@@ -436,7 +446,10 @@ wss.on('connection', (ws, req) => {
       let r = rooms.get(name);
       // Only signed-in people start meetings; guests wait until one is open.
       if (!r && !ws.user) return send(ws, { type: 'not-started', scheduled: publicSchedule(name) });
-      if (r && r.peers.size >= MAX_PEERS) return send(ws, { type: 'full', max: MAX_PEERS });
+      if (r && r.peers.size >= MAX_PEERS) {
+        connlog.log(r.meeting, 'full', { who: String(msg.name || 'Guest').slice(0, 40), device: ws.device, ua: ws.ua });
+        return send(ws, { type: 'full', max: MAX_PEERS });
+      }
       ws.displayName = String(msg.name || 'Guest').slice(0, 40);
       ws.peerId ||= nextId++;
       if (!r) {
@@ -481,7 +494,16 @@ wss.on('connection', (ws, req) => {
 
     // A browser's report of what its video is doing, for debugging calls we can't watch.
     if (msg.type === 'diag') {
-      console.log('diag', room?.name || '-', ws.displayName || '-', JSON.stringify(msg.data).slice(0, 6000));
+      console.log('diag', room.meeting.room, ws.displayName || '-', JSON.stringify(msg.data).slice(0, 6000));
+      if (ws.logged++ < 300) connlog.log(room.meeting, 'video', { who: ws.displayName, id: ws.peerId, data: msg.data });
+      return;
+    }
+
+    // How one of this browser's calls is connecting, or why it isn't.
+    if (msg.type === 'conn') {
+      const d = msg.data && typeof msg.data === 'object' ? msg.data : {};
+      if (ws.logged++ < 300) connlog.log(room.meeting, 'conn', { who: ws.displayName, id: ws.peerId, device: ws.device, ...d });
+      if (d.state === 'failed') console.log('call failed', room.meeting.room, ws.displayName, '->', d.about, JSON.stringify(d).slice(0, 2000));
       return;
     }
 
@@ -506,6 +528,7 @@ wss.on('connection', (ws, req) => {
     }
     if (!room || !room.peers.has(ws)) return;
     room.peers.delete(ws);
+    connlog.log(room.meeting, 'leave', { who: ws.displayName, id: ws.peerId, after: Math.round((Date.now() - ws.joinedAt) / 1000) });
     if (!room.peers.size) return endSession(room, 'left', ws);
     sharedBrowser.left(room, ws);
     for (const p of room.peers) send(p, { type: 'peer-left', id: ws.peerId, name: ws.displayName });

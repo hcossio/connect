@@ -12,6 +12,7 @@ const store = require('./store');
 const auth = require('./auth');
 const summary = require('./summary');
 const sharedBrowser = require('./browser');
+const preview = require('./preview');
 
 const PORT = process.env.PORT || 3000;
 // Each person sends their camera to everyone else, so small groups only.
@@ -22,11 +23,25 @@ app.set('trust proxy', 1); // Railway terminates HTTPS in front of us
 auth.routes(app, express);
 app.get('/login', (_req, res) => res.sendFile(path.join(__dirname, '..', 'web', 'login.html')));
 app.get('/admin', auth.requireAdmin, (_req, res) => res.sendFile(path.join(__dirname, '..', 'web', 'admin.html')));
+// The app page carries link-preview tags: a scheduled meeting's link shows its title, date and time.
+const origin = (req) => `${req.protocol}://${req.get('host')}`;
+const appPage = (req, res, room) => {
+  const s = room ? scheduledFor(room) : null;
+  res.type('html').set('Cache-Control', 'no-cache').send(preview.page(s, origin(req), room, origin(req) + req.originalUrl.split('?')[0]));
+};
+app.get('/', (req, res) => appPage(req, res, null));
 app.use(express.static(path.join(__dirname, '..', 'web')));
 app.use('/vendor/noise', express.static(path.dirname(require.resolve('@sapphi-red/web-noise-suppressor')), { maxAge: '7d' }));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 // Any /r/<room> path loads the app; the client reads the room from the URL.
-app.get('/r/:room', (_req, res) => res.sendFile(path.join(__dirname, '..', 'web', 'index.html')));
+app.get('/r/:room', (req, res) => appPage(req, res, req.params.room));
+// The picture in a scheduled meeting's link preview.
+app.get('/og/:room.png', async (req, res) => {
+  const s = scheduledFor(req.params.room);
+  const png = s && (await preview.card(s).catch((e) => { console.error('preview card failed', e.message); return null; }));
+  if (!png) return res.redirect('/img/og.png');
+  res.type('png').set('Cache-Control', 'public, max-age=3600').send(png);
+});
 
 // Helper app downloads. Builds are attached to GitHub releases by
 // .github/workflows/helper.yml. For a private repo, set GITHUB_TOKEN (read-only,
@@ -310,11 +325,13 @@ app.post('/api/admin/scheduled', auth.requireAdmin, json, (req, res) => {
     title, at,
     minutes: Math.min(600, Math.max(5, Number(req.body?.minutes) || 30)),
     waitingRoom: req.body?.waitingRoom !== false,
+    tz: preview.validTz(req.body?.tz) ? String(req.body.tz) : undefined, // the host's time zone, for link previews
     createdAt: Date.now(),
   };
   store.data.scheduled.push(s);
   store.data.scheduled = store.data.scheduled.filter((x) => x.at > Date.now() - 30 * 86_400_000);
   store.save();
+  preview.card(s).catch(() => {}); // draw the preview picture now, so the first link paste doesn't wait for it
   res.json(s);
 });
 app.delete('/api/admin/scheduled/:id', auth.requireAdmin, (req, res) => {

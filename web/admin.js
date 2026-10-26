@@ -243,6 +243,11 @@ $('pwForm').onsubmit = async (e) => {
 
 // ---------- Scheduled meetings ----------
 const linkFor = (s) => `${location.origin}/r/${encodeURIComponent(s.room)}`;
+// The message WhatsApp opens with; the link under it shows the meeting's preview card.
+const inviteText = (s) => `${s.title}\n${new Date(s.at).toLocaleString([], { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}${zoneLabel()}\n\nJoin on Connect: ${linkFor(s)}`;
+// " (Mexico City time)", so people elsewhere know which clock the time is on.
+const zoneLabel = () => { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; return tz.includes('/') ? ` (${tz.split('/').pop().replace(/_/g, ' ')} time)` : ''; };
+const waFor = (s) => `https://wa.me/?text=${encodeURIComponent(inviteText(s))}`;
 async function loadScheduled() {
   const list = await fetch('/api/admin/scheduled').then((r) => (r.ok ? r.json() : []));
   fill('schedRows', 'schedEmpty', list.map((s) => {
@@ -251,12 +256,13 @@ async function loadScheduled() {
       try { await navigator.clipboard.writeText(linkFor(s)); copy.textContent = 'Copied'; } catch { prompt('Meeting link', linkFor(s)); }
       setTimeout(() => { copy.textContent = 'Copy link'; }, 1500);
     };
+    const wa = Object.assign(document.createElement('a'), { className: 'btn sm', href: waFor(s), target: '_blank', rel: 'noopener', textContent: 'WhatsApp' });
     const open = Object.assign(document.createElement('a'), { className: 'btn primary sm', href: linkFor(s), textContent: 'Start' });
     const del = Object.assign(document.createElement('button'), { type: 'button', className: 'link', textContent: 'Remove' });
     del.onclick = async () => { await fetch(`/api/admin/scheduled/${s.id}`, { method: 'DELETE' }); loadScheduled(); };
     const actions = document.createElement('div');
     actions.className = 'row-actions';
-    actions.append(copy, open);
+    actions.append(copy, wa, open);
     const past = s.at + s.minutes * 60_000 < Date.now();
     return [s.title, `${fmtWhen(s.at)}${past ? ' (past)' : ''} · ${s.minutes} min`, s.waitingRoom ? 'On' : 'Off', actions, del];
   }));
@@ -269,7 +275,7 @@ $('schedForm').onsubmit = async (e) => {
   const r = await fetch('/api/admin/scheduled', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: $('schedTitle').value, at: new Date($('schedAt').value).getTime(), minutes: Number($('schedMinutes').value), waitingRoom: $('schedWaiting').checked }),
+    body: JSON.stringify({ title: $('schedTitle').value, at: new Date($('schedAt').value).getTime(), minutes: Number($('schedMinutes').value), waitingRoom: $('schedWaiting').checked, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }),
   });
   const out = await r.json().catch(() => ({}));
   if (!r.ok) return say('schedMsg', false, out.error || 'Could not schedule it.');

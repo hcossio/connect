@@ -79,6 +79,8 @@ When you control someone's computer while signed in, your browser records what y
 
 On the admin page, **Scheduled meetings** creates a meeting with a title, time and length, and copies its link. Before the host opens it, guests who follow the link see the title and time, and they join on their own once it starts. Each scheduled meeting can have a waiting room (on by default). Guests then knock, and the host, or anyone signed in, lets them in or turns them away from a card at the top of the call. For calls that aren't scheduled, the waiting room is a setting on the Profile page.
 
+When a meeting link is pasted into WhatsApp, iMessage, Slack and other apps, its preview shows the meeting's title, date, time, length and time zone, with a picture card drawn by the server's Chromium (`/og/<room>.png`). The time is shown in the time zone of the browser that scheduled the meeting (meetings scheduled before this existed use `DEFAULT_TZ`, America/New_York unless set). The **WhatsApp** button next to each scheduled meeting, and **Invite on WhatsApp** in the call, write the title and time into the message too. Links to calls that aren't scheduled show a general "Join my call" card.
+
 ## Chat and files
 
 Chat messages are bubbles with the time and a copy button. The chat starts closed; new messages float over the call, and tapping one opens it. You can attach, drop or paste files up to `MAX_FILE_MB` (default 25 MB). They're stored on the server only while the meeting is open, deleted when it ends, and only people in that meeting can download them. Images show a preview.

@@ -41,7 +41,7 @@ const brw = { on: false, driver: null, driverName: null, url: '', loading: false
  *   pointerSent?: boolean }>}
  */
 const peers = new Map();
-const TITLE = document.title;
+const TITLE = 'Connect'; // the server may put a scheduled meeting's title in the page title for link previews
 
 // ---------- Small UI helpers ----------
 function setStatus(text, kind = 'waiting') {
@@ -1068,7 +1068,15 @@ async function copyInvite() {
   catch { toast(location.href, 8000); }
 }
 // WhatsApp opens with the invite written out, ready to pick who gets it.
-const waLink = () => `https://wa.me/?text=${encodeURIComponent(`Join my call on Connect: ${location.href}`)}`;
+// " (Mexico City time)", so people elsewhere know which clock the time is on.
+const zoneLabel = () => { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; return tz.includes('/') ? ` (${tz.split('/').pop().replace(/_/g, ' ')} time)` : ''; };
+const waLink = () => {
+  const s = state.scheduled, link = location.origin + location.pathname;
+  const text = s
+    ? `${s.title}\n${new Date(s.at).toLocaleString([], { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}${zoneLabel()}\n\nJoin on Connect: ${link}`
+    : `Join my call on Connect: ${link}`;
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+};
 for (const a of [$('waInvite'), $('waMenu')]) a.addEventListener('click', () => { a.href = waLink(); setSettingsOpen(false); });
 $('roomChip').onclick = copyInvite;
 $('copyInviteBtn').onclick = copyInvite;

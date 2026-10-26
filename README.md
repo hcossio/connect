@@ -130,6 +130,8 @@ Calls connect browser to browser. Many mobile carriers, and laptops on a phone's
 - `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_TOKEN`: a TURN key from Cloudflare (dashboard, Realtime, TURN Server, Create). The server asks Cloudflare for credentials that last a day and renews them. The first 1,000 GB a month are free.
 - `TURN_URLS` (comma-separated `turn:` / `turns:` URLs) with `TURN_USERNAME` and `TURN_CREDENTIAL`, or with `TURN_SECRET` for coturn's `use-auth-secret`.
 
+The admin page shows how much went through the relay this month next to the 1,000 GB free allowance. Each browser counts what it received through the relay and reports it every 30 seconds; with `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` (a token with Account Analytics read) set too, the card shows Cloudflare's own count instead, which is what it bills.
+
 Without one, only STUN is used and those calls fail. Calls that can connect directly still do; only the ones that can't use the relay. A call whose path breaks (say, a phone moving from wifi to mobile data) looks for a new one on its own.
 
 ### Connection logs

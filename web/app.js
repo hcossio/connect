@@ -699,7 +699,7 @@ function addPeer(id, name, initiator) {
   const p = {
     id, name, pc, dc: null, polite: state.myId > id, makingOffer: false, ignoreOffer: false, waitForOffer: !initiator,
     streams: new Map(), cam: null, screen: null, screenStreamId: null, sharedAt: 0, tile,
-    cands: {}, iceErrors: [], restarts: 0, since: Date.now(),
+    cands: {}, iceErrors: [], restarts: 0, since: Date.now(), relayed: new Map(),
   };
   peers.set(id, p);
   (state.met ||= new Set()).add(name);
@@ -797,6 +797,30 @@ async function reportConn(p, st) {
   signal({ type: 'conn', data });
 }
 
+// Traffic that went through the relay, reported every 30 seconds so the
+// admin page can show how much of the relay's free allowance is used.
+async function countRelay(p) {
+  let sent = 0, received = 0;
+  try {
+    const stats = await p.pc.getStats();
+    stats.forEach((s) => {
+      if (s.type !== 'candidate-pair' || stats.get(s.localCandidateId)?.candidateType !== 'relay') return;
+      const last = p.relayed.get(s.id) || { sent: 0, received: 0 };
+      sent += Math.max(0, (s.bytesSent || 0) - last.sent);
+      received += Math.max(0, (s.bytesReceived || 0) - last.received);
+      p.relayed.set(s.id, { sent: s.bytesSent || 0, received: s.bytesReceived || 0 });
+    });
+  } catch {}
+  return { sent, received };
+}
+async function reportRelay() {
+  let sent = 0, received = 0;
+  for (const p of peers.values()) { const r = await countRelay(p); sent += r.sent; received += r.received; }
+  if (sent || received) signal({ type: 'relay-bytes', sent, received });
+}
+setInterval(reportRelay, 30_000);
+addEventListener('pagehide', reportRelay);
+
 // What this browser is doing with someone's video, sent to the server log so
 // a call that misbehaves on a phone we can't watch can still be diagnosed.
 async function sendDiag(p) {
@@ -851,7 +875,8 @@ function removePeer(id) {
   dropPointer(p);
   peerGone(p);
   p.splitEl?.remove();
-  p.pc.close();
+  // Count its last relayed bytes, then close it.
+  countRelay(p).then((r) => (r.sent || r.received) && signal({ type: 'relay-bytes', ...r })).finally(() => p.pc.close());
   p.tile.remove();
   peers.delete(id);
   updateStage();

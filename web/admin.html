@@ -27,6 +27,7 @@
       <div class="card"><span class="muted small">Meetings, last 30 days</span><b id="kMeetings">–</b><span id="kMinutes" class="muted small"></span></div>
       <div class="card"><span class="muted small">Transcribed, last 30 days</span><b id="kAudio">–</b><span id="kClips" class="muted small"></span></div>
       <div class="card"><span class="muted small">xAI cost, last 30 days</span><b id="kCost">–</b><span id="kPrice" class="muted small"></span></div>
+      <div class="card" title="Media relayed for calls that can't connect directly"><span class="muted small">Relay, this month</span><b id="kRelay">–</b><span id="kRelaySub" class="muted small"></span></div>
     </section>
 
     <section class="panel">
@@ -58,7 +59,7 @@
     <section class="panel">
       <h2>Daily usage</h2>
       <div class="table-wrap"><table>
-        <thead><tr><th>Day</th><th>Meetings</th><th>Call time</th><th>Transcribed</th><th>Clips</th><th>xAI cost</th></tr></thead>
+        <thead><tr><th>Day</th><th>Meetings</th><th>Call time</th><th>Transcribed</th><th>Clips</th><th>xAI cost</th><th>Relayed</th></tr></thead>
         <tbody id="dayRows"></tbody>
       </table></div>
       <p id="dayEmpty" class="muted small" hidden>Nothing yet.</p>

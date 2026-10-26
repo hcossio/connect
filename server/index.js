@@ -138,13 +138,13 @@ app.get('/api/admin/stats', auth.requireAdmin, (_req, res) => {
   const days = [];
   for (let i = 29; i >= 0; i--) {
     const day = new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10);
-    days.push({ day, ...(store.data.usage[day] || { meetings: 0, minutes: 0, clips: 0, audioSec: 0 }) });
+    days.push({ day, meetings: 0, minutes: 0, clips: 0, audioSec: 0, relaySent: 0, relayRecv: 0, ...store.data.usage[day] });
   }
   const today = days[days.length - 1];
   for (const m of open) today.minutes += (Date.now() - Math.max(m.startedAt, Date.parse(today.day))) / 60_000; // still running
   const recent = store.data.meetings.filter((m) => m.endedAt).slice(-50).reverse()
     .map(({ transcript, summary: s, ...m }) => ({ ...m, transcriptLines: transcript?.lines.length || 0, tasks: s?.tasks?.length ?? null }));
-  res.json({ open, days, recent, pricePerHour: XAI_PRICE_PER_HOUR, cloud: !!XAI_KEY });
+  res.json({ open, days, recent, pricePerHour: XAI_PRICE_PER_HOUR, cloud: !!XAI_KEY, relay: { ...turn.status(), cloudflare: turn.cloudflareUsage() } });
 });
 
 // ---------- Temporary files ----------
@@ -496,6 +496,13 @@ wss.on('connection', (ws, req) => {
     if (msg.type === 'diag') {
       console.log('diag', room.meeting.room, ws.displayName || '-', JSON.stringify(msg.data).slice(0, 6000));
       if (ws.logged++ < 300) connlog.log(room.meeting, 'video', { who: ws.displayName, id: ws.peerId, data: msg.data });
+      return;
+    }
+
+    // Bytes this browser sent and received through the relay since its last report.
+    if (msg.type === 'relay-bytes') {
+      const n = (v) => Math.min(Math.max(Math.round(Number(v) || 0), 0), 5e9);
+      if (n(msg.sent) || n(msg.received)) store.addRelay(n(msg.sent), n(msg.received));
       return;
     }
 

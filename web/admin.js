@@ -9,6 +9,7 @@ const fmtDuration = (ms) => {
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
 };
 const fmtAudio = (sec) => (sec < 60 ? `${Math.round(sec)} s` : fmtDuration(sec * 1000));
+const fmtGB = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(b >= 1e11 ? 0 : 1)} GB` : b >= 1e6 ? `${Math.round(b / 1e6)} MB` : b > 0 ? '< 1 MB' : '0 GB');
 const fmtCost = (usd) => (usd < 0.01 && usd > 0 ? '< $0.01' : `$${usd.toFixed(2)}`);
 const fmtWhen = (t) => {
   const d = new Date(t);
@@ -71,11 +72,21 @@ async function refresh() {
   $('kCost').textContent = fmtCost(cost(sum('audioSec')));
   $('kPrice').textContent = `At $${s.pricePerHour.toFixed(2)} per hour of audio`;
 
+  // Relay traffic: Cloudflare's own count of what it sent out (what it bills)
+  // when we can read it, otherwise what our browsers received through it.
+  const month = new Date().toISOString().slice(0, 7);
+  const ours = s.days.filter((d) => d.day.startsWith(month)).reduce((n, d) => n + (d.relayRecv || 0), 0);
+  const cf = s.relay.cloudflare;
+  const exact = cf && cf.egress != null;
+  $('kRelay').textContent = fmtGB(exact ? cf.egress : ours);
+  $('kRelaySub').textContent = !s.relay.configured ? 'No relay set up'
+    : `of 1,000 GB free · ${exact ? 'from Cloudflare' : cf?.error ? `counted by Connect (Cloudflare: ${cf.error})` : 'counted by Connect'}`;
+
   const now = Date.now();
   fill('openRows', 'openEmpty', s.open.map((m) => [liveCell(roomCell(m)), fmtWhen(m.startedAt), fmtDuration(now - m.startedAt), m.people.join(', ') + (m.waiting ? ` (${m.waiting} waiting)` : ''), fmtAudio(m.audioSec), transcriptCell(m)]));
-  fill('dayRows', 'dayEmpty', s.days.filter((d) => d.meetings || d.minutes || d.clips).reverse().map((d) => [
+  fill('dayRows', 'dayEmpty', s.days.filter((d) => d.meetings || d.minutes || d.clips || d.relayRecv).reverse().map((d) => [
     new Date(d.day + 'T12:00:00Z').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
-    d.meetings, fmtDuration(d.minutes * 60_000), fmtAudio(d.audioSec), d.clips, fmtCost(cost(d.audioSec)),
+    d.meetings, fmtDuration(d.minutes * 60_000), fmtAudio(d.audioSec), d.clips, fmtCost(cost(d.audioSec)), d.relayRecv ? fmtGB(d.relayRecv) : '–',
   ]));
   fill('recentRows', 'recentEmpty', s.recent.map((m) => [
     roomCell(m), fmtWhen(m.startedAt), m.interrupted ? 'Unknown (server restarted)' : fmtDuration(m.endedAt - m.startedAt), m.names.join(', '), fmtAudio(m.audioSec || 0), transcriptCell(m),

@@ -63,6 +63,48 @@ function refresh() {
   return fetching;
 }
 
+// What Cloudflare counted through the relay this month, which is what it
+// bills (egress past 1,000 GB a month). Needs an API token that can read
+// account analytics; the TURN key's own token can't.
+const ACCOUNT = process.env.CLOUDFLARE_ACCOUNT_ID;
+const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
+let cf = null, cfAt = 0, cfFetching = null;
+function cloudflareUsage() {
+  if (!ACCOUNT || !API_TOKEN) return null;
+  if (!cfFetching && Date.now() - cfAt > 10 * 60_000) {
+    cfFetching = (async () => {
+      const now = new Date();
+      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      try {
+        const r = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${API_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            // Only this app's TURN key, when we know it; otherwise the whole account.
+            query: `query ($account: string!, $start: Time!, $end: Time!${CF_ID ? ', $key: string!' : ''}) {
+              viewer { accounts(filter: { accountTag: $account }) {
+                callsTurnUsageAdaptiveGroups(filter: { datetimeMinute_geq: $start, datetimeMinute_lt: $end${CF_ID ? ', keyId: $key' : ''} }, limit: 1) {
+                  sum { egressBytes ingressBytes }
+                } } } }`,
+            variables: { account: ACCOUNT, start: start.toISOString(), end: now.toISOString(), ...(CF_ID && { key: CF_ID }) },
+          }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (j.errors?.length) throw new Error(j.errors[0].message);
+        if (!r.ok) throw new Error(`Cloudflare answered ${r.status}`);
+        const sum = j.data?.viewer?.accounts?.[0]?.callsTurnUsageAdaptiveGroups?.[0]?.sum || {};
+        cf = { egress: sum.egressBytes || 0, ingress: sum.ingressBytes || 0, since: start.getTime(), at: Date.now() };
+        cfAt = Date.now();
+      } catch (err) {
+        cf = { ...(cf || {}), error: err.message };
+        cfAt = Date.now() - 9 * 60_000; // try again in a minute
+      } finally { cfFetching = null; }
+    })();
+  }
+  return cf || { pending: true };
+}
+
 const configured = () => !!((CF_ID && CF_TOKEN) || URLS.length);
 
 // What to hand a browser joining a call right now. Never waits: the first
@@ -75,4 +117,4 @@ const hasRelay = () => !!cached && cached.length > STUN.length;
 
 if (configured()) refresh();
 
-module.exports = { iceServers, hasRelay, configured, status: () => ({ configured: configured(), relay: hasRelay(), error: lastError }) };
+module.exports = { iceServers, hasRelay, configured, cloudflareUsage, status: () => ({ configured: configured(), relay: hasRelay(), error: lastError }) };

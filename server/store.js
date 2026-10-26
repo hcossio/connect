@@ -53,6 +53,13 @@ function endMeeting(m) {
   usage().minutes += (m.endedAt - m.startedAt) / 60_000;
   save();
 }
+// Bytes this server's browsers sent and received through the TURN relay.
+function addRelay(sent, received) {
+  const u = usage();
+  u.relaySent = (u.relaySent || 0) + sent;
+  u.relayRecv = (u.relayRecv || 0) + received;
+  save();
+}
 function addClip(m, audioSec) {
   if (m) { m.clips = (m.clips || 0) + 1; m.audioSec = (m.audioSec || 0) + audioSec; }
   const u = usage();
@@ -61,4 +68,4 @@ function addClip(m, audioSec) {
   save();
 }
 
-module.exports = { dir: DIR, data, save, addMeeting, endMeeting, addClip };
+module.exports = { dir: DIR, data, save, addMeeting, endMeeting, addClip, addRelay };

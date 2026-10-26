@@ -50,9 +50,35 @@ function liveCell(c) {
   d.append(dot, c);
   return d;
 }
-function fill(body, empty, rows) {
-  $(body).replaceChildren(...rows.map(row));
+// Fill a table. `limit` shows only the first few (with a "See all" link);
+// `page` splits the rows into pages of that size with Previous and Next.
+const pages = new Map(); // table body id -> page shown
+function fill(body, empty, rows, { limit, page, more } = {}) {
+  let shown = rows;
+  if (limit) {
+    shown = rows.slice(0, limit);
+    if (more) { $(more).hidden = rows.length <= limit; $(more).textContent = "See all"; }
+  }
+  if (page) {
+    const count = Math.max(1, Math.ceil(rows.length / page));
+    const at = Math.min(pages.get(body) || 0, count - 1);
+    pages.set(body, at);
+    shown = rows.slice(at * page, at * page + page);
+    pager(body, empty, rows, page, at, count);
+  }
+  $(body).replaceChildren(...shown.map(row));
   $(empty).hidden = rows.length > 0;
+}
+function pager(body, empty, rows, page, at, count) {
+  const wrap = $(body).closest('.table-wrap');
+  let nav = wrap.nextElementSibling?.classList.contains('pager') ? wrap.nextElementSibling : null;
+  if (!nav) { nav = document.createElement('nav'); nav.className = 'pager'; wrap.after(nav); }
+  nav.hidden = count < 2;
+  const go = (to) => { pages.set(body, to); fill(body, empty, rows, { page }); };
+  const btn = (text, to, off) => Object.assign(document.createElement('button'), { type: 'button', className: 'btn sm', textContent: text, disabled: off, onclick: () => go(to) });
+  nav.replaceChildren(btn('Previous', at - 1, at === 0),
+    Object.assign(document.createElement('span'), { className: 'muted small', textContent: `${at * page + 1}–${Math.min(rows.length, at * page + page)} of ${rows.length}` }),
+    btn('Next', at + 1, at >= count - 1));
 }
 
 async function refresh() {
@@ -83,14 +109,16 @@ async function refresh() {
     : `of 1,000 GB free · ${exact ? 'from Cloudflare' : cf?.error ? `counted by Connect (Cloudflare: ${cf.error})` : 'counted by Connect'}`;
 
   const now = Date.now();
-  fill('openRows', 'openEmpty', s.open.map((m) => [liveCell(roomCell(m)), fmtWhen(m.startedAt), fmtDuration(now - m.startedAt), m.people.join(', ') + (m.waiting ? ` (${m.waiting} waiting)` : ''), fmtAudio(m.audioSec), transcriptCell(m)]));
+  const openRow = (m) => [liveCell(roomCell(m)), fmtWhen(m.startedAt), fmtDuration(now - m.startedAt), m.people.join(', ') + (m.waiting ? ` (${m.waiting} waiting)` : ''), fmtAudio(m.audioSec), transcriptCell(m)];
+  fill('openRows', 'openEmpty', s.open.map(openRow), { limit: 5, more: 'openMore' });
+  fill('openAllRows', 'openAllEmpty', s.open.map(openRow), { page: 10 });
   fill('dayRows', 'dayEmpty', s.days.filter((d) => d.meetings || d.minutes || d.clips || d.relayRecv).reverse().map((d) => [
     new Date(d.day + 'T12:00:00Z').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
     d.meetings, fmtDuration(d.minutes * 60_000), fmtAudio(d.audioSec), d.clips, fmtCost(cost(d.audioSec)), d.relayRecv ? fmtGB(d.relayRecv) : '–',
-  ]));
+  ]), { page: 10 });
   fill('recentRows', 'recentEmpty', s.recent.map((m) => [
     roomCell(m), fmtWhen(m.startedAt), m.interrupted ? 'Unknown (server restarted)' : fmtDuration(m.endedAt - m.startedAt), m.names.join(', '), fmtAudio(m.audioSec || 0), transcriptCell(m),
-  ]));
+  ]), { page: 10 });
 }
 
 // ---------- Transcript viewer ----------
@@ -195,11 +223,16 @@ $('txDl').onclick = () => {
 };
 
 // ---------- Views ----------
+const VIEWS = ['dashboard', 'meetings', 'usage', 'recordings', 'connections', 'settings', 'profile'];
+let view = 'dashboard';
 function showView() {
-  const view = location.hash === '#profile' ? 'profile' : 'dashboard';
-  $('dashboard').hidden = view !== 'dashboard';
-  $('profile').hidden = view !== 'profile';
+  view = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'dashboard';
+  for (const v of VIEWS) $(v).hidden = v !== view;
   for (const a of document.querySelectorAll('.admin-nav a')) a.classList.toggle('active', a.dataset.view === view);
+  if (view === 'recordings') loadRecordings();
+  if (view === 'connections') loadConnLogs();
+  if (view === 'settings') loadSettings();
+  scrollTo(0, 0);
 }
 addEventListener('hashchange', showView);
 showView();
@@ -216,9 +249,32 @@ async function loadProfile() {
 loadProfile();
 refresh();
 loadScheduled();
-loadRecordings();
-loadConnLogs();
-setInterval(() => { if (!$('dashboard').hidden) { refresh(); loadRecordings(); loadConnLogs(); } }, 10_000);
+// Keep what's on screen fresh; forms and settings aren't redrawn under the cursor.
+setInterval(() => {
+  if (view === 'dashboard' || view === 'meetings' || view === 'usage') { refresh(); loadScheduled(); }
+  if (view === 'recordings') loadRecordings();
+  if (view === 'connections') loadConnLogs();
+}, 10_000);
+
+// ---------- Settings ----------
+async function loadSettings() {
+  const s = await fetch('/api/admin/settings').then((r) => (r.ok ? r.json() : null));
+  if (!s) return;
+  $('limitOn').checked = s.limitOn;
+  $('limitMax').value = s.maxPeers;
+  $('limitMax').disabled = !s.limitOn;
+}
+$('limitOn').onchange = () => { $('limitMax').disabled = !$('limitOn').checked; };
+$('limitForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const r = await fetch('/api/admin/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ limitOn: $('limitOn').checked, maxPeers: Number($('limitMax').value) }),
+  });
+  const out = await r.json().catch(() => ({}));
+  say('limitMsg', r.ok, r.ok ? (out.limitOn ? `Saved. Calls now take up to ${out.maxPeers} people.` : 'Saved. Calls have no limit now.') : out.error || 'Could not save it.');
+};
 
 function say(el, ok, text) {
   $(el).hidden = false;
@@ -262,7 +318,7 @@ const zoneLabel = () => { const tz = Intl.DateTimeFormat().resolvedOptions().tim
 const waFor = (s) => `https://wa.me/?text=${encodeURIComponent(inviteText(s))}`;
 async function loadScheduled() {
   const list = await fetch('/api/admin/scheduled').then((r) => (r.ok ? r.json() : []));
-  fill('schedRows', 'schedEmpty', list.map((s) => {
+  const schedRow = (s) => {
     const copy = Object.assign(document.createElement('button'), { type: 'button', className: 'btn sm', textContent: 'Copy link' });
     copy.onclick = async () => {
       try { await navigator.clipboard.writeText(linkFor(s)); copy.textContent = 'Copied'; } catch { prompt('Meeting link', linkFor(s)); }
@@ -277,7 +333,11 @@ async function loadScheduled() {
     actions.append(copy, wa, open);
     const past = s.at + s.minutes * 60_000 < Date.now();
     return [s.title, `${fmtWhen(s.at)}${past ? ' (past)' : ''} · ${s.minutes} min`, s.waitingRoom ? 'On' : 'Off', actions, del];
-  }));
+  };
+  // The dashboard shows what's coming up next; Meetings has all of them.
+  const upcoming = list.filter((s) => s.at + s.minutes * 60_000 >= Date.now()).sort((a, b) => a.at - b.at);
+  fill('schedRows', 'schedEmpty', upcoming.map(schedRow), { limit: 5, more: 'schedMore' });
+  fill('schedAllRows', 'schedAllEmpty', list.map(schedRow), { page: 10 });
 }
 // Default to the next half hour.
 const next = new Date(Math.ceil(Date.now() / 1_800_000) * 1_800_000);
@@ -320,7 +380,7 @@ async function loadRecordings() {
     actions.className = 'row-actions';
     actions.append(play, del);
     return [roomCell(r), fmtWhen(r.startedAt), r.endedAt ? fmtDuration(r.endedAt - r.startedAt) : 'Recording…', r.of, fmtSize(r.bytes), actions];
-  }));
+  }), { page: 10 });
 }
 $('recClose').onclick = () => $('recDialog').close();
 $('recDialog').addEventListener('close', () => { $('recVideo').pause(); $('recVideo').removeAttribute('src'); $('recVideo').load(); });
@@ -373,7 +433,7 @@ async function loadConnLogs() {
     const view = Object.assign(document.createElement('button'), { type: 'button', className: 'btn sm', textContent: 'View' });
     view.onclick = () => openConnLog(m);
     return [roomCell(m), fmtWhen(m.first), people, calls, view];
-  }));
+  }), { page: 10 });
 }
 let connShown = null;
 async function openConnLog(m) {

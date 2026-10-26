@@ -480,7 +480,11 @@ $$('.pop-btn').forEach(setupPopButton);
 async function popOut(video) {
   if (pip) return pip.close();
   if (!CAN_DOC_PIP) {
-    try { await video.requestPictureInPicture(); } catch { toast('Your browser blocked the pop-out window.'); }
+    if (document.pictureInPictureElement) return document.exitPictureInPicture().catch(() => {});
+    try {
+      await video.play().catch(() => {}); // a paused video pops out as a black window
+      await video.requestPictureInPicture();
+    } catch { toast('Your browser blocked the pop-out window.'); }
     return;
   }
   try {
@@ -511,6 +515,18 @@ async function popOut(video) {
     placeTiles();
   });
 }
+// Phones hand a live call video back from the floating window paused, or
+// stuck on its last frame: hook it up to its stream again and play it.
+document.addEventListener('leavepictureinpicture', (e) => {
+  const v = e.target;
+  if (!(v instanceof HTMLVideoElement) || !v.srcObject) return;
+  const stream = v.srcObject;
+  v.srcObject = null;
+  v.srcObject = stream;
+  playWhenAllowed(v);
+}, true);
+document.addEventListener('enterpictureinpicture', (e) => { if (e.target instanceof HTMLVideoElement) e.target.play().catch(() => {}); }, true);
+
 function syncPip() {
   if (!pip) return;
   const d = pip.document;

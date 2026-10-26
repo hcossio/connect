@@ -975,6 +975,8 @@ button.link:hover { color: var(--muted); }
 }
 /* Tools menu: Draw, Pointers and the shared browser, each a switch. */
 .tools-menu .opt[hidden] { display: none; }
+.tools-menu .opt:disabled { opacity: .4; cursor: default; }
+.tools-menu .opt:disabled:hover { background: transparent; }
 .tools-menu .opt:not(.active) .switch { background: #3a3a3a; }
 .tools-menu .opt:not(.active) .switch::after { left: 3px; background: #a3a3a3; }
 .tools-menu .opt.active { background: transparent; color: #fff; }

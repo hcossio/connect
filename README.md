@@ -48,7 +48,7 @@ With nobody sharing, everyone else's cameras fill the stage as a grid. Your came
 
 ## Pointers
 
-**Pointers**, **Draw** and **Browser** are switches in the **Tools** menu (the shapes button in the dock); a dot on it shows one is on.
+**Pointers**, **Draw**, **Control** and **Browser** are switches in the **Tools** menu (the shapes button in the dock); a dot on it shows one is on.
 
 While someone shares their screen, **Pointers** shows where everyone is pointing. Each person turns it on for themselves and gets their own color (the dot next to it in the menu), and their mouse over the shared screen appears, with their name, for everyone else who has it on. The person sharing sees the pointers drawn on their real screen when DevAssist Helper (0.1.2 or later) is open: it shows them in a transparent window that clicks pass through. Pointers are hidden while you are controlling, since the real mouse is moving then.
 

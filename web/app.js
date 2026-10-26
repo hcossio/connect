@@ -126,6 +126,7 @@ function updateStage() {
   placeTiles();
   syncPointers();
   syncBoard();
+  syncAutoPip();
 }
 // Everyone's shared screens at once. Clicking one puts it on the stage alone.
 function renderSplit(list) {
@@ -329,6 +330,15 @@ try {
   const saved = JSON.parse(localStorage.getItem('devassist:tiles') || '{}');
   for (const tile of TILES) if (saved[tile.id] > 0) tileSize.set(tile, saved[tile.id]);
 } catch {}
+// Reset layout (settings menu): every card back in its dock at its first size.
+$('resetLayoutBtn').onclick = () => {
+  tilePos.clear();
+  tileSize.clear();
+  try { localStorage.removeItem('devassist:tiles'); } catch {}
+  placeTiles();
+  setSettingsOpen(false);
+  toast('Layout reset', 2000);
+};
 const saveSizes = () => {
   try { localStorage.setItem('devassist:tiles', JSON.stringify(Object.fromEntries(TILES.map((t) => [t.id, tileSize.get(t) || 0])))); } catch {}
 };
@@ -537,6 +547,67 @@ function syncPip() {
   avatar.textContent = initials(state.myName);
 }
 
+// ---------- Switching apps on a phone ----------
+// Leaving the browser for another app pops the call out into a small floating
+// video where the browser allows it (Safari on iPhone and iPad, and Chrome,
+// which also asks for it through the media session), so the call stays in
+// view. Phones may still pause our own camera in the background; when we come
+// back, any camera or mic the phone stopped is started again.
+function syncAutoPip() {
+  if (!CAN_VIDEO_PIP) return;
+  const screen = $('remoteScreen');
+  const main = !screen.hidden ? screen : [...peers.values()].find((p) => p.cam)?.tile.querySelector('video');
+  for (const v of document.querySelectorAll('video[autopictureinpicture]')) if (v !== main) v.removeAttribute('autopictureinpicture');
+  if (main) { main.setAttribute('autopictureinpicture', ''); main.autoPictureInPicture = true; }
+}
+try {
+  navigator.mediaSession?.setActionHandler('enterpictureinpicture', () => {
+    if (pip || document.pictureInPictureElement || $('call').hidden || state.ended) return;
+    const main = document.querySelector('video[autopictureinpicture]') || $('localCam');
+    popOut(main);
+  });
+} catch {} // browsers without automatic picture-in-picture
+
+async function restartMedia() {
+  if (!state.camStream || $('call').hidden || state.ended) return;
+  resumeAudio();
+  const cam = state.camStream.getVideoTracks()[0];
+  if (cam?.readyState === 'ended') {
+    try {
+      const { deviceId } = cam.getSettings();
+      const fresh = (await navigator.mediaDevices.getUserMedia({ video: deviceId ? { deviceId: { ideal: deviceId } } : true })).getVideoTracks()[0];
+      fresh.enabled = cam.enabled;
+      state.camStream.removeTrack(cam);
+      state.camStream.addTrack(fresh);
+      for (const p of peers.values()) for (const s of p.pc.getSenders()) if (s.track === cam) s.replaceTrack(fresh);
+      $('localCam').srcObject = state.camStream;
+      playWhenAllowed($('localCam'));
+    } catch (err) { console.warn('Could not restart the camera', err); }
+  }
+  // The mic: through the noise filter, swap its input; otherwise swap the track itself.
+  const sent = state.camStream.getAudioTracks()[0];
+  const raw = noise.node ? noise.raw : sent;
+  if (raw?.readyState === 'ended') {
+    try {
+      const fresh = (await navigator.mediaDevices.getUserMedia({ audio: AUDIO })).getAudioTracks()[0];
+      if (noise.node) {
+        noise.src.disconnect();
+        noise.raw = fresh;
+        noise.src = noise.ctx.createMediaStreamSource(new MediaStream([fresh]));
+        routeMic();
+      } else {
+        fresh.enabled = sent.enabled;
+        state.camStream.removeTrack(sent);
+        state.camStream.addTrack(fresh);
+        for (const p of peers.values()) for (const s of p.pc.getSenders()) if (s.track === sent) s.replaceTrack(fresh);
+      }
+    } catch (err) { console.warn('Could not restart the mic', err); }
+  }
+  syncMediaButtons();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) restartMedia(); });
+addEventListener('pageshow', restartMedia);
+
 // ---------- Lobby ----------
 const urlRoom = location.pathname.startsWith('/r/') ? decodeURIComponent(location.pathname.slice(3)) : '';
 try { $('nameInput').value = localStorage.getItem('devassist:name') || ''; } catch {}
@@ -639,8 +710,11 @@ function join() {
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   state.ws = new WebSocket(`${proto}://${location.host}/ws`);
-  state.ws.onopen = () => signal({ type: 'join', room, name: state.myName });
-  state.joinMsg = { type: 'join', room, name: state.myName };
+  // Someone who was in this meeting before comes back in without knocking.
+  let pass = null;
+  try { pass = JSON.parse(localStorage.getItem('connect:pass') || 'null'); } catch {}
+  state.joinMsg = { type: 'join', room, name: state.myName, pass: pass?.room === room ? pass.pass : undefined };
+  state.ws.onopen = () => signal(state.joinMsg);
   state.ws.onmessage = (e) => onSignal(JSON.parse(e.data));
   state.ws.onclose = () => { if (!state.ended) endSession('lost'); };
 }
@@ -922,6 +996,7 @@ async function onSignal(msg) {
       $('myColor').style.setProperty('--c', colorOf(msg.id));
       $('browserBtn').hidden = !msg.browser;
       if (msg.ice?.length) state.iceServers = msg.ice;
+      try { if (msg.pass) localStorage.setItem('connect:pass', JSON.stringify({ room: $('roomLabel').textContent, pass: msg.pass })); } catch {}
       tx.token = msg.token;
       tx.cloud = !!msg.cloud;
       syncTranscriptUI();

@@ -426,8 +426,11 @@ wss.on('connection', (ws, req) => {
     if (!r.meeting.names.includes(ws.displayName) && r.meeting.names.length < 20) r.meeting.names.push(ws.displayName);
     r.meeting.peak = Math.max(r.meeting.peak, r.peers.size + 1);
     const others = [...r.peers].map((p) => ({ id: p.peerId, name: p.displayName }));
+    // A pass to come back in without knocking again, for as long as this meeting runs.
+    const pass = crypto.randomBytes(16).toString('hex');
+    r.passes.add(pass);
     r.peers.add(ws);
-    send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY, title: r.meeting.title, waitingRoom: r.waitingRoom, browser: sharedBrowser.available(), ice: turn.iceServers() });
+    send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY, title: r.meeting.title, waitingRoom: r.waitingRoom, browser: sharedBrowser.available(), ice: turn.iceServers(), pass });
     connlog.log(r.meeting, 'join', { who: ws.displayName, id: ws.peerId, device: ws.device, ua: ws.ua, signedIn: !!ws.user, relay: turn.hasRelay(), people: r.peers.size });
     sharedBrowser.joined(r, ws);
     for (const p of r.peers) if (p !== ws) send(p, { type: 'peer-joined', id: ws.peerId, name: ws.displayName });
@@ -454,14 +457,16 @@ wss.on('connection', (ws, req) => {
       ws.peerId ||= nextId++;
       if (!r) {
         const sched = scheduledFor(name);
-        r = { peers: new Set(), host: ws, checking: false, files: new Set(), waiting: new Set(), waitingRoom: sched ? sched.waitingRoom : !!ws.user.waitingRoom };
+        r = { peers: new Set(), host: ws, checking: false, files: new Set(), waiting: new Set(), passes: new Set(), waitingRoom: sched ? sched.waitingRoom : !!ws.user.waitingRoom };
         r.meeting = { room: name, title: sched?.title, startedAt: Date.now(), by: ws.user.username, host: ws.displayName, names: [], peak: 0, clips: 0, audioSec: 0 };
         store.addMeeting(r.meeting);
         rooms.set(name, r);
         scheduleCheck(r);
       }
-      // Guests knock first when the meeting has a waiting room.
-      if (r.waitingRoom && !ws.user && r.peers.size) {
+      // Guests knock first when the meeting has a waiting room, unless they
+      // were already let in to this meeting and are coming back.
+      const back = typeof msg.pass === 'string' && r.passes.has(msg.pass);
+      if (r.waitingRoom && !ws.user && r.peers.size && !back) {
         ws.waitingFor = r;
         r.waiting.add(ws);
         send(ws, { type: 'waiting', scheduled: publicSchedule(name) });

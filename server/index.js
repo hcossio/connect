@@ -17,8 +17,9 @@ const turn = require('./turn');
 const connlog = require('./connlog');
 
 const PORT = process.env.PORT || 3000;
-// Each person sends their camera to everyone else, so small groups only.
-const MAX_PEERS = Number(process.env.MAX_PEERS || 6);
+// Each person sends their camera to everyone else, so calls are capped by
+// default; the admin page's Settings tab changes the cap or turns it off.
+const maxPeers = () => (store.data.settings.limitOn ? store.data.settings.maxPeers : Infinity);
 
 const app = express();
 app.set('trust proxy', 1); // Railway terminates HTTPS in front of us
@@ -142,7 +143,7 @@ app.get('/api/admin/stats', auth.requireAdmin, (_req, res) => {
   }
   const today = days[days.length - 1];
   for (const m of open) today.minutes += (Date.now() - Math.max(m.startedAt, Date.parse(today.day))) / 60_000; // still running
-  const recent = store.data.meetings.filter((m) => m.endedAt).slice(-50).reverse()
+  const recent = store.data.meetings.filter((m) => m.endedAt).reverse()
     .map(({ transcript, summary: s, ...m }) => ({ ...m, transcriptLines: transcript?.lines.length || 0, tasks: s?.tasks?.length ?? null }));
   res.json({ open, days, recent, pricePerHour: XAI_PRICE_PER_HOUR, cloud: !!XAI_KEY, relay: { ...turn.status(), cloudflare: turn.cloudflareUsage() } });
 });
@@ -313,6 +314,17 @@ app.delete('/api/admin/recordings/:id', auth.requireAdmin, (req, res) => {
 // The host schedules a meeting and sends its link. Before it starts, guests
 // see its title and time; it opens when the host joins.
 const json = express.json({ limit: '10kb' });
+// Admin settings: the call size limit, changed without a redeploy.
+app.get('/api/admin/settings', auth.requireAdmin, (_req, res) => res.json(store.data.settings));
+app.post('/api/admin/settings', auth.requireAdmin, json, (req, res) => {
+  const { limitOn, maxPeers: max } = req.body || {};
+  if (typeof limitOn !== 'boolean') return res.status(400).json({ error: 'limitOn must be true or false' });
+  if (limitOn && !(Number.isInteger(max) && max >= 2 && max <= 50)) return res.status(400).json({ error: 'Pick a number from 2 to 50.' });
+  store.data.settings.limitOn = limitOn;
+  if (limitOn) store.data.settings.maxPeers = max;
+  store.save();
+  res.json(store.data.settings);
+});
 const scheduledFor = (room) => store.data.scheduled.find((s) => s.room === room);
 app.get('/api/admin/scheduled', auth.requireAdmin, (_req, res) => {
   const cutoff = Date.now() - 86_400_000; // keep yesterday's around in case one runs late
@@ -449,9 +461,9 @@ wss.on('connection', (ws, req) => {
       let r = rooms.get(name);
       // Only signed-in people start meetings; guests wait until one is open.
       if (!r && !ws.user) return send(ws, { type: 'not-started', scheduled: publicSchedule(name) });
-      if (r && r.peers.size >= MAX_PEERS) {
+      if (r && r.peers.size >= maxPeers()) {
         connlog.log(r.meeting, 'full', { who: String(msg.name || 'Guest').slice(0, 40), device: ws.device, ua: ws.ua });
-        return send(ws, { type: 'full', max: MAX_PEERS });
+        return send(ws, { type: 'full', max: maxPeers() });
       }
       ws.displayName = String(msg.name || 'Guest').slice(0, 40);
       ws.peerId ||= nextId++;

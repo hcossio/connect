@@ -18,6 +18,10 @@ data.meetings ||= [];
 data.usage ||= {};
 data.scheduled ||= [];
 data.recordings ||= [];
+// Changed from the admin page's Settings tab; MAX_PEERS only sets the first value.
+data.settings ||= {};
+data.settings.limitOn ??= true;
+data.settings.maxPeers ??= Number(process.env.MAX_PEERS || 6);
 for (const r of data.recordings) if (!r.endedAt) r.endedAt = r.lastChunkAt || r.startedAt;
 // Meetings that were open when the server last stopped ended then.
 for (const m of data.meetings) {

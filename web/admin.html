@@ -12,7 +12,12 @@
   <header class="admin-head">
     <span class="wordmark">Connect</span>
     <nav class="admin-nav">
-      <a href="#dashboard" data-view="dashboard">Meetings</a>
+      <a href="#dashboard" data-view="dashboard">Dashboard</a>
+      <a href="#meetings" data-view="meetings">Meetings</a>
+      <a href="#usage" data-view="usage">Usage</a>
+      <a href="#recordings" data-view="recordings">Recordings</a>
+      <a href="#connections" data-view="connections">Connections</a>
+      <a href="#settings" data-view="settings">Settings</a>
       <a href="#profile" data-view="profile">Profile</a>
     </nav>
     <span class="spacer"></span>
@@ -21,7 +26,7 @@
   </header>
 
   <main id="dashboard" class="admin-main">
-    <h1 class="page-title">Meetings</h1>
+    <h1 class="page-title">Dashboard</h1>
     <section class="cards">
       <div class="card"><span class="muted small">Open now</span><b id="kOpen">–</b><span id="kOpenSub" class="muted small"></span></div>
       <div class="card"><span class="muted small">Meetings, last 30 days</span><b id="kMeetings">–</b><span id="kMinutes" class="muted small"></span></div>
@@ -31,7 +36,16 @@
     </section>
 
     <section class="panel">
-      <h2>Scheduled meetings</h2>
+      <div class="panel-head"><h2>Open meetings</h2><a id="openMore" class="link small" href="#meetings" hidden></a></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Room</th><th>Started</th><th>Length</th><th>People</th><th>Transcribed</th><th>Transcript</th></tr></thead>
+        <tbody id="openRows"></tbody>
+      </table></div>
+      <p id="openEmpty" class="muted small" hidden>No meetings are open right now.</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Coming up</h2><a id="schedMore" class="link small" href="#meetings" hidden></a></div>
       <form id="schedForm" class="sched-form">
         <label class="field"><span>Title</span><input id="schedTitle" required maxlength="80" placeholder="e.g. Fix the login loop with Gina"></label>
         <label class="field"><span>When</span><input id="schedAt" type="datetime-local" required></label>
@@ -44,37 +58,53 @@
         <thead><tr><th>Meeting</th><th>When</th><th>Waiting room</th><th>Link</th><th></th></tr></thead>
         <tbody id="schedRows"></tbody>
       </table></div>
-      <p id="schedEmpty" class="muted small" hidden>Nothing scheduled.</p>
+      <p id="schedEmpty" class="muted small" hidden>Nothing coming up.</p>
     </section>
+  </main>
 
+  <main id="meetings" class="admin-main" hidden>
+    <h1 class="page-title">Meetings</h1>
     <section class="panel">
-      <h2>Open meetings</h2>
+      <h2>Open now</h2>
       <div class="table-wrap"><table>
         <thead><tr><th>Room</th><th>Started</th><th>Length</th><th>People</th><th>Transcribed</th><th>Transcript</th></tr></thead>
-        <tbody id="openRows"></tbody>
+        <tbody id="openAllRows"></tbody>
       </table></div>
-      <p id="openEmpty" class="muted small" hidden>No meetings are open right now.</p>
+      <p id="openAllEmpty" class="muted small" hidden>No meetings are open right now.</p>
     </section>
-
     <section class="panel">
-      <h2>Daily usage</h2>
+      <h2>Scheduled</h2>
       <div class="table-wrap"><table>
-        <thead><tr><th>Day</th><th>Meetings</th><th>Call time</th><th>Transcribed</th><th>Clips</th><th>xAI cost</th><th>Relayed</th></tr></thead>
-        <tbody id="dayRows"></tbody>
+        <thead><tr><th>Meeting</th><th>When</th><th>Waiting room</th><th>Link</th><th></th></tr></thead>
+        <tbody id="schedAllRows"></tbody>
       </table></div>
-      <p id="dayEmpty" class="muted small" hidden>Nothing yet.</p>
+      <p id="schedAllEmpty" class="muted small" hidden>Nothing scheduled.</p>
     </section>
-
-    <section class="panel">
-      <h2>Recent meetings</h2>
+<section class="panel">
+      <h2>Finished</h2>
       <div class="table-wrap"><table>
         <thead><tr><th>Room</th><th>Started</th><th>Length</th><th>People</th><th>Transcribed</th><th>Transcript</th></tr></thead>
         <tbody id="recentRows"></tbody>
       </table></div>
       <p id="recentEmpty" class="muted small" hidden>No finished meetings yet.</p>
     </section>
+  </main>
 
-    <section class="panel">
+  <main id="usage" class="admin-main" hidden>
+    <h1 class="page-title">Usage</h1>
+<section class="panel">
+      <h2>By day, last 30 days</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Day</th><th>Meetings</th><th>Call time</th><th>Transcribed</th><th>Clips</th><th>xAI cost</th><th>Relayed</th></tr></thead>
+        <tbody id="dayRows"></tbody>
+      </table></div>
+      <p id="dayEmpty" class="muted small" hidden>Nothing yet.</p>
+    </section>
+  </main>
+
+  <main id="recordings" class="admin-main" hidden>
+    <h1 class="page-title">Recordings</h1>
+<section class="panel">
       <h2>Remote control recordings</h2>
       <div class="table-wrap"><table>
         <thead><tr><th>Meeting</th><th>When</th><th>Length</th><th>Controlled</th><th>Size</th><th></th></tr></thead>
@@ -82,8 +112,11 @@
       </table></div>
       <p id="recEmpty" class="muted small" hidden>No recordings yet. Remote control sessions you run while signed in are recorded here.</p>
     </section>
+  </main>
 
-    <section class="panel">
+  <main id="connections" class="admin-main" hidden>
+    <h1 class="page-title">Connections</h1>
+<section class="panel">
       <h2>Connection logs <span class="muted small">(last 7 days)</span></h2>
       <p id="turnNote" class="muted small"></p>
       <div class="table-wrap"><table>
@@ -91,6 +124,20 @@
         <tbody id="connRows"></tbody>
       </table></div>
       <p id="connEmpty" class="muted small" hidden>Nothing yet. Each meeting's joins, leaves and how every call connected show up here.</p>
+    </section>
+  </main>
+
+  <main id="settings" class="admin-main narrow" hidden>
+    <h1 class="page-title">Settings</h1>
+    <section class="panel">
+      <h2>Call size</h2>
+      <form id="limitForm" class="pw-form">
+        <label class="check"><input id="limitOn" type="checkbox"> Limit how many people can be in a call</label>
+        <label class="field"><span>Most people per call</span><input id="limitMax" type="number" min="2" max="50" step="1" required></label>
+        <p class="muted small">Everyone sends their video to everyone else, so calls work best with up to about 6 people. With no limit, anyone with the link can join, and bigger calls may get choppy on slower connections.</p>
+        <button class="btn primary" type="submit">Save</button>
+        <p id="limitMsg" class="small" hidden></p>
+      </form>
     </section>
   </main>
 

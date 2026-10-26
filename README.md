@@ -40,7 +40,7 @@ Sessions close on their own so nobody leaves one open by accident:
 - After 2 hours, whoever started the session gets a "Still in the session?" popup. If they don't press **Continue** within 5 minutes, the session closes for everyone. Pressing Continue starts another 2 hours. If the person who started it leaves, the next person in the call gets the popup instead.
 - Leaving, or closing the tab or window, takes you out of the call and stops any remote control involving you. Everyone else stays in, and you can rejoin with the same link. The session closes once the last person leaves.
 
-Tune with `SESSION_MINUTES` (default 120) and `SESSION_GRACE_MINUTES` (default 5) on the server. `MAX_PEERS` (default 6) caps how many people can be in a room.
+Tune with `SESSION_MINUTES` (default 120) and `SESSION_GRACE_MINUTES` (default 5) on the server. How many people can be in a call is set on the admin page under **Settings**: a limit (6 by default, or `MAX_PEERS` the first time the server starts) that can be changed or turned off without a redeploy.
 
 ## Camera tiles
 
@@ -81,7 +81,7 @@ A language setting (any, English, Español) helps both engines when everyone spe
 
 Only a signed-in host can start a meeting. Guests join with the host's link or room code, and anyone who opens a link before the host arrives waits on a "Waiting for the host" screen until the meeting starts. There are no sign-ups. The one account is created from `ADMIN_USERNAME` (default `marcah`), `ADMIN_EMAIL` (default `hc@marcah.com`) and `ADMIN_PASSWORD`. You sign in at `/login` with the username or the email. You can change the password at `/admin`, and setting `ADMIN_PASSWORD` to a new value resets it, which is the way back in if you forget it. Changing the password signs out every other browser.
 
-`/admin` shows the meetings open right now (room, who's in it, how long it's been running, how much was transcribed), daily usage for the last 30 days, and the last 50 meetings. Meetings with a saved transcript have a **View** link that opens it, with a download button. The **Profile** tab has your display name (filled in for you when you start a call), username, email and password. Transcription cost is estimated at `XAI_PRICE_PER_HOUR` (default $0.10 per hour of audio). Accounts, the meeting log and usage live in `store.json` under `DATA_DIR` (default `./data`). On Railway that is a volume mounted at `/data`, so they survive deploys.
+`/admin` opens on a **Dashboard**: totals for the last 30 days, the meetings open right now and the next scheduled ones (five of each, with a link to all). Its tabs hold the rest, ten rows a page: **Meetings** (open, scheduled and finished), **Usage** (by day), **Recordings**, **Connections** (the connection logs) and **Settings** (the call size limit). Meetings with a saved transcript have a **View** link that opens it, with a download button. The **Profile** tab has your display name (filled in for you when you start a call), username, email and password. Transcription cost is estimated at `XAI_PRICE_PER_HOUR` (default $0.10 per hour of audio). Accounts, the meeting log and usage live in `store.json` under `DATA_DIR` (default `./data`). On Railway that is a volume mounted at `/data`, so they survive deploys.
 
 ## Remote control recordings
 

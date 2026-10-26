@@ -681,6 +681,14 @@ body.admin { overflow: auto; background: #0a0a0a; }
 .admin-nav a:hover { color: var(--text); }
 .admin-nav a.active { color: var(--text); border-bottom-color: #fff; }
 .admin-main.narrow { max-width: 640px; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.panel-head h2 { margin-bottom: 0; }
+.panel-head .link { color: #fff; text-underline-offset: 3px; }
+.panel-head .link[hidden] { display: none; }
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 16px; }
+.pager[hidden] { display: none; }
+.pager .muted.small { margin: 0; }
+.pager .btn:disabled { opacity: .35; cursor: default; }
 button.link { border: 0; padding: 0; background: none; color: #fff; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 button.link:hover { color: var(--muted); }
 .tx-dialog { width: min(780px, calc(100% - 32px)); height: calc(100% - 64px); max-height: 900px; padding: 0; display: grid; grid-template-rows: auto auto 1fr; }
@@ -709,7 +717,8 @@ button.link:hover { color: var(--muted); }
 .tx-who { display: flex; gap: 8px; align-items: baseline; }
 @media (max-width: 640px) {
   .admin-head { flex-wrap: wrap; gap: 14px; padding: 18px var(--pad); }
-  .admin-nav { order: 3; width: 100%; margin: 0; }
+  .admin-nav { order: 3; width: 100%; margin: 0; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .admin-nav a { white-space: nowrap; }
   .admin-main { gap: 40px; }
   .page-title { margin-bottom: -8px; }
   .cards { grid-template-columns: 1fr 1fr; gap: 20px; }

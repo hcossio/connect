@@ -73,7 +73,8 @@ function chromium() {
   const exe = [process.env.CHROMIUM_PATH, '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome'].find((p) => p && fs.existsSync(p));
   if (!exe) return null;
   if (!launching) {
-    launching = require('playwright-core').chromium.launch({ executablePath: exe, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] })
+    const l = launching = require('playwright-core').chromium.launch({ executablePath: exe, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] })
+      .then((b) => { b.on('disconnected', () => { if (launching === l) launching = null; }); return b; })
       .catch((e) => { launching = null; throw e; });
   }
   clearTimeout(idle);
@@ -122,4 +123,4 @@ async function card(s) {
   }
 }
 
-module.exports = { page, card, when, validTz };
+module.exports = { page, card, when, validTz, chromium };

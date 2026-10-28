@@ -151,6 +151,7 @@ function renderSummary() {
   const s = shown.summary;
   const body = $('sumBody');
   $('sumCopy').hidden = s?.status !== 'done' && !s?.prompt;
+  $('sumPdf').hidden = !s?.prompt;
   $('sumRedo').hidden = !shown.summaryEnabled || s?.status === 'working';
   $('sumRedo').textContent = s ? 'Write it again' : 'Write summary';
   $('sumStatus').textContent = '';
@@ -165,25 +166,13 @@ function renderSummary() {
   if (!s.prompt) return body.replaceChildren();
   if (s.lines && s.lines < shown.transcript.lines.length) $('sumStatus').textContent = `Written from the first ${s.lines} lines. Write it again to include the rest.`;
 
-  const parts = [el('p', 'sum-text', s.summary)];
-  if (s.decisions.length) {
-    parts.push(el('h3', null, 'Decisions'));
-    const ul = el('ul', 'sum-list');
-    for (const d of s.decisions) ul.append(el('li', null, d));
-    parts.push(ul);
-  }
-  parts.push(el('h3', null, `Tasks (${s.tasks.length})`));
-  if (!s.tasks.length) parts.push(el('p', 'muted small', 'No tasks came out of this call.'));
-  const ol = el('ol', 'sum-tasks');
-  for (const t of s.tasks) {
-    const li = el('li');
-    const head = el('div', 'task-head');
-    head.append(el('b', null, t.title), el('span', 'owner' + (t.owner ? '' : ' general'), t.owner || 'General'));
-    li.append(head);
-    if (t.details) li.append(el('p', 'muted small', t.details));
-    ol.append(li);
-  }
-  parts.push(ol);
+  // The summary is the same document the PDF is printed from.
+  const doc = el('iframe', 'sum-doc');
+  doc.title = 'Meeting summary';
+  doc.src = `/api/admin/meetings/${encodeURIComponent(shown.id)}/summary.html?v=${s.at || 0}`;
+  const fit = () => { try { doc.style.height = `${doc.contentDocument.documentElement.scrollHeight}px`; } catch {} };
+  doc.onload = () => { fit(); doc.contentDocument?.fonts?.ready.then(fit); setTimeout(fit, 600); };
+  const parts = [doc];
   const details = el('details', 'sum-prompt');
   details.append(el('summary', null, 'Agent prompt'), el('pre', null, s.prompt));
   parts.push(details);
@@ -203,6 +192,22 @@ $('sumCopy').onclick = async () => {
   try { await navigator.clipboard.writeText(shown.summary.prompt); $('sumCopy').textContent = 'Copied'; }
   catch { $('sumCopy').textContent = 'Could not copy'; }
   setTimeout(() => { $('sumCopy').textContent = 'Copy agent prompt'; }, 1500);
+};
+$('sumPdf').onclick = async () => {
+  $('sumPdf').disabled = true;
+  $('sumPdf').textContent = 'Making the PDF…';
+  try {
+    const r = await fetch(`/api/admin/meetings/${encodeURIComponent(shown.id)}/summary.pdf`);
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not make the PDF');
+    const name = decodeURIComponent((r.headers.get('Content-Disposition') || '').match(/filename\*=UTF-8''([^;]+)/)?.[1] || 'summary.pdf');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await r.blob());
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  } catch (err) { $('sumStatus').textContent = err.message; }
+  $('sumPdf').disabled = false;
+  $('sumPdf').textContent = 'Download PDF';
 };
 $('sumRedo').onclick = async () => {
   const r = await fetch(`/api/admin/meetings/${encodeURIComponent(shown.id)}/summary`, { method: 'POST' });

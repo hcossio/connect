@@ -2405,6 +2405,7 @@ function transcribeClip(audio, at) {
       if (!tx.on || !/\p{L}/u.test(text) || HALLUCINATIONS.test(text)) return;
       addLine(state.myName, text, at, true, state.myId);
       broadcast({ t: 'line', text, at });
+      signal({ type: 'tx-line', text, at }); // saved with the meeting as it's said
     } catch (err) {
       txStatus(err.message);
     } finally { tx.pending--; }

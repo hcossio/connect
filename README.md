@@ -99,7 +99,7 @@ Chat messages are bubbles with the time and a copy button. The chat starts close
 
 ## Saved transcripts
 
-The meeting starter can press **Save** in the Transcript tab to keep the transcript with the meeting. Saving again replaces it. Saved transcripts are listed on the admin page. Once it has been saved, the host's browser also saves the latest version when they leave.
+The transcript saves itself: each line is sent to the server as soon as it's transcribed and kept with the meeting, so nothing is lost if nobody presses Save, someone's browser closes, or the host leaves early. Transcripts are listed on the admin page, and the summary is written when the meeting ends. **Save** in the Transcript tab is still there for the host; it adds any lines the server missed and writes the summary right away.
 
 ## Summary and tasks
 

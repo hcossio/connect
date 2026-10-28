@@ -197,8 +197,36 @@ function dropFiles(room) {
 }
 
 // ---------- Saved transcripts ----------
-// The meeting's host can save the transcript to the meeting; the admin page shows it.
+// Every line anyone's browser transcribes is sent here as it's said and kept
+// with the meeting, so the transcript is saved even if nobody presses Save or
+// the host's browser closes. The summary is written when the meeting ends.
 const summaryTimers = new Map();
+const MAX_LINES = 5000;
+function addTranscriptLine(ws, text, at) {
+  const m = ws.room.meeting;
+  text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 2000);
+  if (!text) return;
+  const now = Date.now();
+  at = Number(at);
+  if (!Number.isFinite(at) || Math.abs(at - now) > 10 * 60_000) at = now; // a wrong clock still lands in order
+  m.transcript ||= { savedAt: now, by: 'auto', lines: [] };
+  const lines = m.transcript.lines;
+  if (lines.length >= MAX_LINES) return;
+  let i = lines.length;
+  while (i > 0 && lines[i - 1].at > at) i--;
+  lines.splice(i, 0, { name: ws.displayName, text, at });
+  m.transcript.savedAt = now;
+  store.save();
+}
+// When a meeting ends, write its summary if the transcript changed since the last one.
+function summarizeIfNew(m) {
+  const t = m.transcript;
+  if (!summary.enabled || !t?.lines.length) return;
+  if (m.summary?.status === 'done' && (m.summary.lines || 0) >= t.lines.length) return;
+  summary.summarize(m);
+}
+// Meetings cut off by a restart still get their summary.
+setTimeout(() => { for (const m of store.data.meetings) if (m.endedAt && m.transcript?.by === 'auto' && !m.summary) summarizeIfNew(m); }, 5000);
 /** Store the host's transcript on the meeting; returns an error message or the line count. */
 function saveTranscript(ws, raw) {
   if (ws.room.host !== ws) return { error: 'Only the meeting host can save the transcript' };
@@ -207,13 +235,17 @@ function saveTranscript(ws, raw) {
   })).filter((l) => l.text);
   if (!lines.length) return { error: 'The transcript is empty' };
   const m = ws.room.meeting;
-  m.transcript = { savedAt: Date.now(), by: ws.displayName, lines };
+  // Keep every line the server already has and add any it missed.
+  const seen = new Set((m.transcript?.lines || []).map((l) => `${l.name}|${l.at}|${l.text}`));
+  const merged = [...(m.transcript?.lines || []), ...lines.filter((l) => !seen.has(`${l.name}|${l.at}|${l.text}`))]
+    .sort((a, b) => a.at - b.at).slice(0, MAX_LINES);
+  m.transcript = { ...(m.transcript || {}), savedAt: Date.now(), by: m.transcript?.by || ws.displayName, lines: merged };
   store.save();
   // Saving again later in the call rewrites the summary, but not more than once a minute.
   clearTimeout(summaryTimers.get(m.id));
   const wait = Math.max(0, 60_000 - (Date.now() - (m.summary?.startedAt || 0)));
   summaryTimers.set(m.id, setTimeout(() => { summaryTimers.delete(m.id); summary.summarize(m); }, wait));
-  return { lines: lines.length };
+  return { lines: merged.length };
 }
 app.post('/api/transcript', express.json({ limit: '2mb' }), (req, res) => {
   const ws = callers.get(req.get('x-token'));
@@ -405,6 +437,7 @@ function endSession(room, reason, leaver) {
   clearTimeout(room.graceTimer);
   for (const [name, r] of rooms) if (r === room) rooms.delete(name);
   if (!room.meeting.endedAt) store.endMeeting(room.meeting);
+  summarizeIfNew(room.meeting);
   dropFiles(room);
   sharedBrowser.close(room);
   for (const w of room.waiting) { w.waitingFor = null; send(w, { type: 'not-started', scheduled: publicSchedule(room.meeting.room) }); }
@@ -506,6 +539,12 @@ wss.on('connection', (ws, req) => {
     // The host's browser sends its transcript as it leaves, if they saved it before.
     if (msg.type === 'save-transcript') {
       saveTranscript(ws, msg.lines);
+      return;
+    }
+
+    // One line of the transcript, from the person who said it.
+    if (msg.type === 'tx-line') {
+      addTranscriptLine(ws, msg.text, msg.at);
       return;
     }
 

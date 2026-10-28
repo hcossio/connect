@@ -13,6 +13,7 @@ const auth = require('./auth');
 const summary = require('./summary');
 const sharedBrowser = require('./browser');
 const preview = require('./preview');
+const summaryDoc = require('./summarydoc');
 const turn = require('./turn');
 const connlog = require('./connlog');
 
@@ -258,6 +259,30 @@ app.get('/api/admin/meetings/:id', auth.requireAdmin, (req, res) => {
   const m = store.data.meetings.find((x) => x.id === req.params.id);
   if (!m) return res.status(404).json({ error: 'No such meeting' });
   res.json({ ...m, summaryEnabled: summary.enabled });
+});
+// The summary as a document (shown in admin) and as a PDF to download.
+function summarized(req, res) {
+  const m = store.data.meetings.find((x) => x.id === req.params.id);
+  if (!m?.summary?.prompt) { res.status(404).json({ error: 'That meeting has no summary yet' }); return null; }
+  return m;
+}
+app.get('/api/admin/meetings/:id/summary.html', auth.requireAdmin, (req, res) => {
+  const m = summarized(req, res);
+  if (m) res.type('html').send(summaryDoc.html(m));
+});
+app.get('/api/admin/meetings/:id/summary.pdf', auth.requireAdmin, async (req, res) => {
+  const m = summarized(req, res);
+  if (!m) return;
+  try {
+    const out = await summaryDoc.pdf(m);
+    if (!out) return res.status(503).json({ error: 'PDF export needs Chromium on the server' });
+    const name = summaryDoc.fileName(m);
+    res.set('Content-Disposition', `attachment; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`);
+    res.type('pdf').send(out);
+  } catch (err) {
+    console.error('summary pdf failed:', err.message);
+    res.status(500).json({ error: 'Could not make the PDF' });
+  }
 });
 app.post('/api/admin/meetings/:id/summary', auth.requireAdmin, (req, res) => {
   const m = store.data.meetings.find((x) => x.id === req.params.id);

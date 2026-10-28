@@ -103,7 +103,7 @@ The transcript saves itself: each line is sent to the server as soon as it's tra
 
 ## Summary and tasks
 
-After a transcript is saved, Grok (xAI chat completions) writes a summary, the decisions made and a list of tasks. A task gets an owner only when the call makes it clear who took it; the rest are marked General. The admin page shows all of this in the meeting's **Summary and tasks** tab, along with an **agent prompt**: the host's tasks plus the General ones, with the context a coding agent needs, ready to copy and paste. Other people's tasks are listed only as context.
+After a transcript is saved, Grok (xAI chat completions) writes the meeting summary as a document, in the language of the call: a short overview, who attended (and who was missing, if the call says so), a section per topic with its key points, a **Next steps** table of tasks with owner and due date, and, when the call leaves people to consult, the open questions for that conversation. A task gets an owner only when the call makes it clear who took it. The admin page shows the document in the meeting's **Summary and tasks** tab, with **Download PDF** (printed by the server's Chromium) and an **agent prompt**: the host's tasks plus the unowned ones, with the context a coding agent needs, ready to copy and paste. Other people's tasks are listed only as context.
 
 The model is `XAI_CHAT_MODEL` if set; otherwise the server tries `grok-4-fast`, then `grok-4`, then `grok-3-mini`, and keeps the first one that answers. A summary is rewritten at most once a minute.
 

@@ -27,6 +27,7 @@ for (const r of data.recordings) if (!r.endedAt) r.endedAt = r.lastChunkAt || r.
 for (const m of data.meetings) {
   if (!m.endedAt) { m.endedAt = m.lastSeen || m.startedAt; m.interrupted = true; }
   if (m.summary?.status === 'working') Object.assign(m.summary, { status: 'error', error: 'The server restarted while writing it. Try again.' });
+  if (m.agenda?.status === 'working') Object.assign(m.agenda, { status: 'error', error: 'The server restarted while writing it. Try again.' });
 }
 
 let timer = null;

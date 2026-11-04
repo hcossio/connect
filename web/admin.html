@@ -175,6 +175,7 @@
     </header>
     <div class="tx-tabs" role="tablist">
       <button id="tabSummary" type="button" role="tab" aria-selected="true">Summary and tasks</button>
+      <button id="tabAgenda" type="button" role="tab" aria-selected="false">Next meeting <span class="beta-tag">Beta</span></button>
       <button id="tabLines" type="button" role="tab" aria-selected="false">Transcript</button>
     </div>
     <div id="sumPane" class="tx-body">
@@ -185,6 +186,14 @@
         <span id="sumStatus" class="muted small"></span>
       </div>
       <div id="sumBody"></div>
+    </div>
+    <div id="agPane" class="tx-body" hidden>
+      <div class="sum-actions">
+        <button id="agPdf" class="btn primary sm" type="button">Download agenda PDF</button>
+        <button id="agRedo" class="btn sm" type="button">Write it again</button>
+        <span id="agStatus" class="muted small"></span>
+      </div>
+      <div id="agBody"></div>
     </div>
     <div id="txBody" class="tx-body" hidden>
       <div class="sum-actions"><button id="txDl" class="btn sm" type="button">Download</button></div>

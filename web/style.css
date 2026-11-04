@@ -695,6 +695,7 @@ button.link:hover { color: var(--muted); }
 .tx-tabs { display: flex; gap: 24px; padding: 4px 28px 0; border-bottom: 1px solid var(--line); }
 .tx-tabs button { border: 0; background: none; color: #7a7a7a; font: inherit; font-weight: 700; padding: 10px 0; border-bottom: 2px solid transparent; cursor: pointer; }
 .tx-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: #fff; }
+.tx-tabs .beta-tag { display: inline-block; margin-left: 4px; padding: 0 6px; border: 1px solid var(--line); border-radius: 999px; font-size: 10.5px; font-weight: 600; letter-spacing: .02em; vertical-align: 1px; color: var(--muted); }
 .tx-body[hidden] { display: none; }
 .sum-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 16px; }
 .sum-doc { display: block; width: 100%; min-height: 320px; border: 0; border-radius: 14px; background: #fff; }

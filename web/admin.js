@@ -143,6 +143,7 @@ async function openTranscript(id) {
     return p;
   }));
   renderSummary();
+  renderAgenda();
   if (!$('txDialog').open) { showTab('summary'); $('txDialog').showModal(); }
 }
 
@@ -167,48 +168,93 @@ function renderSummary() {
   if (s.lines && s.lines < shown.transcript.lines.length) $('sumStatus').textContent = `Written from the first ${s.lines} lines. Write it again to include the rest.`;
 
   // The summary is the same document the PDF is printed from.
-  const doc = el('iframe', 'sum-doc');
-  doc.title = 'Meeting summary';
-  doc.src = `/api/admin/meetings/${encodeURIComponent(shown.id)}/summary.html?v=${s.at || 0}`;
-  const fit = () => { try { doc.style.height = `${doc.contentDocument.documentElement.scrollHeight}px`; } catch {} };
-  doc.onload = () => { fit(); doc.contentDocument?.fonts?.ready.then(fit); setTimeout(fit, 600); };
-  const parts = [doc];
+  const parts = [docFrame('Meeting summary', `/api/admin/meetings/${encodeURIComponent(shown.id)}/summary.html?v=${s.at || 0}`)];
   const details = el('details', 'sum-prompt');
   details.append(el('summary', null, 'Agent prompt'), el('pre', null, s.prompt));
   parts.push(details);
   body.replaceChildren(...parts);
 }
 
+function docFrame(title, src) {
+  const doc = el('iframe', 'sum-doc');
+  doc.title = title;
+  doc.src = src;
+  const fit = () => { try { doc.style.height = `${doc.contentDocument.documentElement.scrollHeight}px`; } catch {} };
+  doc.onload = () => { fit(); doc.contentDocument?.fonts?.ready.then(fit); setTimeout(fit, 600); };
+  return doc;
+}
+
+// Beta: the agenda for the follow-up meeting, written from the summary.
+let agendaTimer = 0;
+function renderAgenda() {
+  clearTimeout(agendaTimer);
+  const s = shown.summary;
+  const a = shown.agenda;
+  const body = $('agBody');
+  $('agPdf').hidden = !a?.items;
+  $('agRedo').hidden = !shown.summaryEnabled || !s?.prompt || a?.status === 'working';
+  $('agRedo').textContent = a?.items ? 'Write it again' : 'Write the agenda';
+  $('agStatus').textContent = '';
+  const intro = el('p', 'muted', 'Plans the follow-up meeting from this summary: the pending tasks to review, what people should bring, and the questions left open.');
+  if (!s?.prompt) return body.replaceChildren(el('p', 'muted', 'The agenda is written from the summary. Write the summary first.'));
+  if (!shown.summaryEnabled && !a?.items) return body.replaceChildren(el('p', 'muted', 'The agenda needs xAI, which is not set up on this server (XAI_API_KEY).'));
+  if (a?.status === 'working') {
+    $('agStatus').textContent = 'Grok is planning the next meeting…';
+    // Only the agenda refreshes, so the summary above doesn't reload while it waits.
+    const id = shown.id;
+    agendaTimer = setTimeout(async () => {
+      if (!$('txDialog').open || shown.id !== id) return;
+      const r = await fetch(`/api/admin/meetings/${encodeURIComponent(id)}`).catch(() => null);
+      if (r?.ok && shown.id === id) { const m = await r.json(); shown.agenda = m.agenda; shown.summary = m.summary; renderAgenda(); }
+      else renderAgenda();
+    }, 3000);
+    if (!a.items) return body.replaceChildren(intro);
+  }
+  if (a?.status === 'error') $('agStatus').textContent = a.error;
+  if (!a?.items) return body.replaceChildren(intro);
+  if (a.status === 'done' && a.fromSummary && s.at && a.fromSummary < s.at) $('agStatus').textContent = 'The summary changed since this was written. Write it again to catch up.';
+  body.replaceChildren(docFrame('Next meeting agenda', `/api/admin/meetings/${encodeURIComponent(shown.id)}/agenda.html?v=${a.at || 0}`));
+}
+$('agRedo').onclick = async () => {
+  const r = await fetch(`/api/admin/meetings/${encodeURIComponent(shown.id)}/agenda`, { method: 'POST' });
+  if (!r.ok) { $('agStatus').textContent = (await r.json().catch(() => ({}))).error || 'Could not start it.'; return; }
+  shown.agenda = { ...(shown.agenda || {}), status: 'working' };
+  renderAgenda();
+};
+$('agPdf').onclick = () => downloadPdf($('agPdf'), 'Download agenda PDF', 'agenda.pdf', $('agStatus'));
+
 function showTab(which) {
-  $('tabSummary').setAttribute('aria-selected', String(which === 'summary'));
-  $('tabLines').setAttribute('aria-selected', String(which !== 'summary'));
-  $('sumPane').hidden = which !== 'summary';
-  $('txBody').hidden = which === 'summary';
+  for (const [tab, pane, name] of [['tabSummary', 'sumPane', 'summary'], ['tabAgenda', 'agPane', 'agenda'], ['tabLines', 'txBody', 'lines']]) {
+    $(tab).setAttribute('aria-selected', String(which === name));
+    $(pane).hidden = which !== name;
+  }
 }
 $('tabSummary').onclick = () => showTab('summary');
+$('tabAgenda').onclick = () => showTab('agenda');
 $('tabLines').onclick = () => showTab('lines');
-$('txDialog').addEventListener('close', () => clearTimeout(pollTimer));
+$('txDialog').addEventListener('close', () => { clearTimeout(pollTimer); clearTimeout(agendaTimer); });
 $('sumCopy').onclick = async () => {
   try { await navigator.clipboard.writeText(shown.summary.prompt); $('sumCopy').textContent = 'Copied'; }
   catch { $('sumCopy').textContent = 'Could not copy'; }
   setTimeout(() => { $('sumCopy').textContent = 'Copy agent prompt'; }, 1500);
 };
-$('sumPdf').onclick = async () => {
-  $('sumPdf').disabled = true;
-  $('sumPdf').textContent = 'Making the PDF…';
+async function downloadPdf(btn, label, file, status) {
+  btn.disabled = true;
+  btn.textContent = 'Making the PDF…';
   try {
-    const r = await fetch(`/api/admin/meetings/${encodeURIComponent(shown.id)}/summary.pdf`);
+    const r = await fetch(`/api/admin/meetings/${encodeURIComponent(shown.id)}/${file}`);
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not make the PDF');
-    const name = decodeURIComponent((r.headers.get('Content-Disposition') || '').match(/filename\*=UTF-8''([^;]+)/)?.[1] || 'summary.pdf');
+    const name = decodeURIComponent((r.headers.get('Content-Disposition') || '').match(/filename\*=UTF-8''([^;]+)/)?.[1] || file);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(await r.blob());
     a.download = name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  } catch (err) { $('sumStatus').textContent = err.message; }
-  $('sumPdf').disabled = false;
-  $('sumPdf').textContent = 'Download PDF';
-};
+  } catch (err) { status.textContent = err.message; }
+  btn.disabled = false;
+  btn.textContent = label;
+}
+$('sumPdf').onclick = () => downloadPdf($('sumPdf'), 'Download PDF', 'summary.pdf', $('sumStatus'));
 $('sumRedo').onclick = async () => {
   const r = await fetch(`/api/admin/meetings/${encodeURIComponent(shown.id)}/summary`, { method: 'POST' });
   if (!r.ok) { $('sumStatus').textContent = (await r.json().catch(() => ({}))).error || 'Could not start it.'; return; }

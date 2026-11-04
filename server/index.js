@@ -15,6 +15,7 @@ const sharedBrowser = require('./browser');
 const preview = require('./preview');
 const summaryDoc = require('./summarydoc');
 const agenda = require('./agenda');
+const liveAgenda = require('./liveagenda');
 const turn = require('./turn');
 const connlog = require('./connlog');
 
@@ -493,6 +494,7 @@ function endSession(room, reason, leaver) {
   clearTimeout(room.checkTimer);
   clearTimeout(room.graceTimer);
   for (const [name, r] of rooms) if (r === room) rooms.delete(name);
+  liveAgenda.record(room);
   if (!room.meeting.endedAt) store.endMeeting(room.meeting);
   summarizeIfNew(room.meeting);
   dropFiles(room);
@@ -532,7 +534,7 @@ wss.on('connection', (ws, req) => {
     const pass = crypto.randomBytes(16).toString('hex');
     r.passes.add(pass);
     r.peers.add(ws);
-    send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY, title: r.meeting.title, waitingRoom: r.waitingRoom, browser: sharedBrowser.available(), ice: turn.iceServers(), pass });
+    send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY, title: r.meeting.title, waitingRoom: r.waitingRoom, browser: sharedBrowser.available(), ice: turn.iceServers(), pass, agenda: r.agenda ? liveAgenda.view(r.agenda) : null, canRunAgenda: r.host === ws || !!ws.user });
     connlog.log(r.meeting, 'join', { who: ws.displayName, id: ws.peerId, device: ws.device, ua: ws.ua, signedIn: !!ws.user, relay: turn.hasRelay(), people: r.peers.size });
     sharedBrowser.joined(r, ws);
     for (const p of r.peers) if (p !== ws) send(p, { type: 'peer-joined', id: ws.peerId, name: ws.displayName });
@@ -629,6 +631,16 @@ wss.on('connection', (ws, req) => {
 
     if (sharedBrowser.handle(room, ws, msg)) return;
 
+    // Agenda mode: the host and signed-in people run it, everyone sees it.
+    if (msg.type === 'agenda') {
+      if (room.host !== ws && !ws.user) return;
+      const error = liveAgenda.apply(room, ws, msg);
+      if (error) return send(ws, { type: 'agenda-error', message: error });
+      const view = liveAgenda.view(room.agenda);
+      for (const p of room.peers) send(p, { type: 'agenda', agenda: view, byId: ws.peerId, action: msg.action });
+      return;
+    }
+
     if (msg.type === 'session-continue') {
       if (room.host === ws) scheduleCheck(room);
       return;
@@ -655,7 +667,7 @@ wss.on('connection', (ws, req) => {
     // Someone still has to be asked whether to continue: pass it on.
     if (room.host === ws) {
       room.host = room.peers.values().next().value;
-      for (const p of room.peers) send(p, { type: 'host', id: room.host.peerId });
+      for (const p of room.peers) send(p, { type: 'host', id: room.host.peerId, canRunAgenda: p === room.host || !!p.user });
       if (room.checking) send(room.host, { type: 'session-check' });
       if (!room.host.user) for (const w of room.waiting) send(room.host, { type: 'knock', id: w.peerId, name: w.displayName });
     }

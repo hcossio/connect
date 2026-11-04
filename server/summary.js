@@ -42,7 +42,8 @@ function transcriptText(m) {
   return m.transcript.lines.map((l) => `[${new Date(l.at).toISOString().slice(11, 16)}] ${l.name}: ${l.text}`).join('\n');
 }
 
-async function callModel(model, m) {
+// One JSON answer from Grok, trying the known model names until one works.
+async function askOnce(model, system, user) {
   const r = await fetch(URL_, {
     method: 'POST',
     headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
@@ -50,10 +51,7 @@ async function callModel(model, m) {
       model,
       temperature: 0.2,
       response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: SYSTEM },
-        { role: 'user', content: `Call "${m.room}" on ${new Date(m.startedAt).toISOString().slice(0, 10)} (${new Date(m.startedAt).toDateString()}). The host is ${m.host}. People: ${m.names.join(', ')}.\n\nTranscript:\n${transcriptText(m).slice(-120_000)}` },
-      ],
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     }),
   });
   const out = await r.json().catch(() => ({}));
@@ -64,6 +62,16 @@ async function callModel(model, m) {
   }
   const text = out.choices?.[0]?.message?.content || '';
   return JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, ''));
+}
+async function ask(system, user) {
+  let lastErr;
+  for (const model of workingModel ? [workingModel] : MODELS) {
+    try { const raw = await askOnce(model, system, user); workingModel = model; return { raw, model }; } catch (err) {
+      lastErr = err;
+      if (!err.badModel) break;
+    }
+  }
+  throw lastErr || new Error('No model answered');
 }
 
 const LABELS = { summary: 'Summary', participants: 'Participants', attended: 'Attended', absent: 'Did not attend', next_steps: 'Next steps', task: 'Task', owner: 'Owner', due: 'Due', status: 'Status', pending: 'Pending', unassigned: 'Unassigned', no_date: 'No date' };
@@ -102,14 +110,7 @@ async function summarize(m) {
   m.summary = { ...(m.summary || {}), status: 'working', startedAt: Date.now() };
   store.save();
   try {
-    let raw, lastErr;
-    for (const model of workingModel ? [workingModel] : MODELS) {
-      try { raw = await callModel(model, m); workingModel = model; break; } catch (err) {
-        lastErr = err;
-        if (!err.badModel) break;
-      }
-    }
-    if (!raw) throw lastErr || new Error('No model answered');
+    const { raw } = await ask(SYSTEM, `Call "${m.room}" on ${new Date(m.startedAt).toISOString().slice(0, 10)} (${new Date(m.startedAt).toDateString()}). The host is ${m.host}. People: ${m.names.join(', ')}.\n\nTranscript:\n${transcriptText(m).slice(-120_000)}`);
     const list = (v, n, max = 30) => (Array.isArray(v) ? v : []).map((x) => str(x, n)).filter(Boolean).slice(0, max);
     const overview = Array.isArray(raw.overview) ? list(raw.overview, 3000, 3) : list([raw.overview ?? raw.summary], 4000, 1);
     const fu = raw.follow_up && typeof raw.follow_up === 'object' ? raw.follow_up : null;
@@ -145,4 +146,4 @@ async function summarize(m) {
   }
 }
 
-module.exports = { summarize, enabled: !!KEY };
+module.exports = { summarize, ask, enabled: !!KEY };

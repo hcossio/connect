@@ -14,6 +14,7 @@ const summary = require('./summary');
 const sharedBrowser = require('./browser');
 const preview = require('./preview');
 const summaryDoc = require('./summarydoc');
+const agenda = require('./agenda');
 const turn = require('./turn');
 const connlog = require('./connlog');
 
@@ -145,7 +146,7 @@ app.get('/api/admin/stats', auth.requireAdmin, (_req, res) => {
   const today = days[days.length - 1];
   for (const m of open) today.minutes += (Date.now() - Math.max(m.startedAt, Date.parse(today.day))) / 60_000; // still running
   const recent = store.data.meetings.filter((m) => m.endedAt).reverse()
-    .map(({ transcript, summary: s, ...m }) => ({ ...m, transcriptLines: transcript?.lines.length || 0, tasks: s?.tasks?.length ?? null }));
+    .map(({ transcript, summary: s, agenda: _a, ...m }) => ({ ...m, transcriptLines: transcript?.lines.length || 0, tasks: s?.tasks?.length ?? null }));
   res.json({ open, days, recent, pricePerHour: XAI_PRICE_PER_HOUR, cloud: !!XAI_KEY, relay: { ...turn.status(), cloudflare: turn.cloudflareUsage() } });
 });
 
@@ -281,6 +282,37 @@ app.get('/api/admin/meetings/:id/summary.pdf', auth.requireAdmin, async (req, re
     res.type('pdf').send(out);
   } catch (err) {
     console.error('summary pdf failed:', err.message);
+    res.status(500).json({ error: 'Could not make the PDF' });
+  }
+});
+// Beta: the next meeting's agenda, written from the summary.
+app.post('/api/admin/meetings/:id/agenda', auth.requireAdmin, (req, res) => {
+  const m = summarized(req, res);
+  if (!m) return;
+  if (!summary.enabled) return res.status(503).json({ error: 'xAI is not set up on this server' });
+  agenda.write(m);
+  res.json({ ok: true });
+});
+function agendaReady(req, res) {
+  const m = summarized(req, res);
+  if (m && !m.agenda?.items) { res.status(404).json({ error: 'That meeting has no agenda yet' }); return null; }
+  return m;
+}
+app.get('/api/admin/meetings/:id/agenda.html', auth.requireAdmin, (req, res) => {
+  const m = agendaReady(req, res);
+  if (m) res.type('html').send(summaryDoc.agendaHtml(m));
+});
+app.get('/api/admin/meetings/:id/agenda.pdf', auth.requireAdmin, async (req, res) => {
+  const m = agendaReady(req, res);
+  if (!m) return;
+  try {
+    const out = await summaryDoc.agendaPdf(m);
+    if (!out) return res.status(503).json({ error: 'PDF export needs Chromium on the server' });
+    const name = summaryDoc.agendaFileName(m);
+    res.set('Content-Disposition', `attachment; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`);
+    res.type('pdf').send(out);
+  } catch (err) {
+    console.error('agenda pdf failed:', err.message);
     res.status(500).json({ error: 'Could not make the PDF' });
   }
 });

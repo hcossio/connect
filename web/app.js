@@ -1038,6 +1038,7 @@ async function onSignal(msg) {
       state.isHost = msg.id === state.myId;
       syncTranscriptUI();
       syncHostUI();
+      onHostChanged();
       break;
     case 'browser': onBrowser(msg); break;
     case 'browser-frame': onBrowserFrame(msg.data); break;
@@ -1137,6 +1138,7 @@ function onData(p, m) {
     case 'line': if (typeof m.text === 'string') addLine(p.name, m.text.slice(0, 2000), Number(m.at) || Date.now(), false, p.id); break;
     case 'ann': onAnn(p, m); break;
     case 'board': if (p.id === state.hostId) onBoard(m); break;
+    case 'reset': onReset(p); break;
     case 'me': onMe(p, m); break;
     case 'react': onReact(p, m); break;
     case 'hand-lower': if (p.id === state.hostId) setHand(false, p.name); break;

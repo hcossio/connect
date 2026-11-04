@@ -75,6 +75,7 @@ function renderSelf() {
 }
 function syncHostUI() {
   $('muteAllBtn').hidden = !state.isHost;
+  $('resetAllBtn').hidden = !state.isHost;
   for (const p of peers.values()) if (p.device) renderPeer(p);
   if (typeof syncBoard === 'function') syncBoard();
 }

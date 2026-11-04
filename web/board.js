@@ -53,6 +53,8 @@ function syncBoard() {
   const sel = board.items.get(draw.sel);
   if (draw.sel && (!sel || sel.board !== key || !canEdit(sel))) draw.sel = null;
   $('dbDelete').hidden = !draw.sel;
+  // The host can always close the whiteboard, even after leaving drawing mode.
+  $('closeWbBtn').hidden = !(board.wb && state.isHost && !board.drawing);
   // Your own screen: offer to see it here, to see what people draw on it.
   $('selfViewBtn').hidden = !state.screenStream || brw.on || board.wb;
   $('selfViewBtn').querySelector('span').textContent = state.selfView ? 'Back' : 'See my screen';
@@ -376,12 +378,14 @@ function onAnn(p, m) {
   syncBoard();
 }
 // The host tells someone who just joined what's open and what's drawn.
+// Always send the state, closed included, so nobody keeps a stale whiteboard.
 function sendBoard(id) {
-  if (board.wb || board.hide) sendTo(id, { t: 'board', wb: board.wb, hide: board.hide });
+  sendTo(id, { t: 'board', wb: board.wb, hide: board.hide });
   for (const it of board.items.values()) sendTo(id, { t: 'ann', op: 'add', item: wire(it) });
 }
 function onBoard(m) {
   const wasWb = board.wb, wasHidden = board.hide;
+  if (wasWb === !!m.wb && wasHidden === !!m.hide) return; // the host's regular reminder: nothing changed
   board.wb = !!m.wb;
   board.hide = !!m.hide;
   if (board.wb && !wasWb) toast(`${nameOf(state.hostId)} opened the whiteboard`);
@@ -391,6 +395,58 @@ function onBoard(m) {
   updateStage();
 }
 function shareBoardState() { broadcast({ t: 'board', wb: board.wb, hide: board.hide }); }
+// A message sent while someone's connection was still opening or briefly
+// dropped is lost, which used to leave the whiteboard stuck open on their
+// screen. The host repeats the state every few seconds, so everyone catches up.
+setInterval(() => { if (state.isHost && peers.size && !state.ended) shareBoardState(); }, 5000);
+// The host who opened the whiteboard (or hid everyone's drawings) left, and
+// someone else is host now. Nobody else could close it, so close it and let
+// everyone draw again. Every browser does this itself, so it needs no message.
+// The drawings stay, and come back if the new host opens the whiteboard.
+function onHostChanged() {
+  const wasWb = board.wb;
+  if (!board.wb && !board.hide) return;
+  board.wb = false;
+  board.hide = false;
+  if (wasWb) toast('The host left, so the whiteboard was closed');
+  updateStage();
+}
+
+// ---------- Host: clear everyone's screen ----------
+// The last resort when something is stuck on people's screens: closes the
+// whiteboard, the shared browser and remote control, erases every drawing,
+// and closes stray prompts, for everyone.
+function clearScreen() {
+  board.wb = false;
+  board.hide = false;
+  board.items.clear();
+  board.live.clear();
+  board.drawing = false;
+  Object.assign(draw, { sel: null, op: null, mine: [] });
+  state.selfView = false;
+  if (state.controlling) sendTo(state.controlling, { t: 'control-revoked' });
+  if (state.controlling || state.controlPending) stopControl();
+  revokeControl();
+  denyPending();
+  closeControlPrompts();
+  for (const id of ['typeDialog', 'pointerHelperDialog']) $(id)?.close();
+  $('reactions').replaceChildren();
+  updateStage();
+}
+function resetEveryone() {
+  if (!state.isHost) return;
+  if (brw.on) signal({ type: 'browser-close' });
+  broadcast({ t: 'reset' });
+  clearScreen();
+  toast('You cleared everyone\'s screen', 3000);
+}
+function onReset(p) {
+  if (p.id !== state.hostId) return;
+  clearScreen();
+  toast(`${p.name} cleared everyone's screen`);
+}
+$('resetAllBtn').onclick = () => { setSettingsOpen(false); resetEveryone(); };
+$('closeWbBtn').onclick = () => setWhiteboard(false);
 
 // ---------- The toolbar ----------
 function setDrawing(on) {

@@ -1040,6 +1040,7 @@ async function onSignal(msg) {
       if (msg.canRunAgenda != null) onAgenda(null, msg.canRunAgenda);
       syncTranscriptUI();
       syncHostUI();
+      onHostChanged();
       break;
     case 'agenda': onAgenda(msg.agenda, null, msg); break;
     case 'agenda-error': toast(msg.message, 6000); break;
@@ -1141,6 +1142,7 @@ function onData(p, m) {
     case 'line': if (typeof m.text === 'string') addLine(p.name, m.text.slice(0, 2000), Number(m.at) || Date.now(), false, p.id); break;
     case 'ann': onAnn(p, m); break;
     case 'board': if (p.id === state.hostId) onBoard(m); break;
+    case 'reset': onReset(p); break;
     case 'me': onMe(p, m); break;
     case 'react': onReact(p, m); break;
     case 'hand-lower': if (p.id === state.hostId) setHand(false, p.name); break;

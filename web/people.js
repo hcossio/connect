@@ -75,6 +75,7 @@ function renderSelf() {
 }
 function syncHostUI() {
   $('muteAllBtn').hidden = !state.isHost;
+  $('resetAllBtn').hidden = !state.isHost;
   for (const p of peers.values()) if (p.device) renderPeer(p);
   if (typeof syncBoard === 'function') syncBoard();
 }
@@ -157,7 +158,7 @@ renderSelf();
 
 
 // ---------- Tools menu: draw, pointers and the shared browser ----------
-const TOOLS = ['drawBtn', 'pointersBtn', 'controlBtn', 'browserBtn'];
+const TOOLS = ['drawBtn', 'pointersBtn', 'controlBtn', 'agendaBtn', 'browserBtn'];
 function setToolsOpen(open) {
   $('toolsMenu').hidden = !open;
   $('toolsBtn').classList.toggle('open', open);
@@ -169,7 +170,7 @@ addEventListener('pointerdown', (e) => {
 });
 addEventListener('keydown', (e) => { if (e.key === 'Escape') setToolsOpen(false); });
 // Draw and the browser change the whole stage, so the menu gets out of the way.
-for (const id of ['drawBtn', 'controlBtn', 'browserBtn']) $(id).addEventListener('click', () => setToolsOpen(false));
+for (const id of ['drawBtn', 'controlBtn', 'agendaBtn', 'browserBtn']) $(id).addEventListener('click', () => setToolsOpen(false));
 // The switches follow each tool's state, and a dot on Tools shows one is on.
 function syncTools() {
   let any = false;

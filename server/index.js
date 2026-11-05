@@ -15,6 +15,7 @@ const sharedBrowser = require('./browser');
 const preview = require('./preview');
 const summaryDoc = require('./summarydoc');
 const agenda = require('./agenda');
+const merge = require('./merge');
 const turn = require('./turn');
 const connlog = require('./connlog');
 
@@ -322,6 +323,20 @@ app.post('/api/admin/meetings/:id/summary', auth.requireAdmin, (req, res) => {
   if (!summary.enabled) return res.status(503).json({ error: 'xAI is not set up on this server' });
   summary.summarize(m);
   res.json({ ok: true });
+});
+
+// Join meetings that were one conversation (a call cut off and started
+// again) and write one summary from the combined transcript.
+app.post('/api/admin/meetings/join', auth.requireAdmin, express.json(), (req, res) => {
+  const out = merge.join(req.body?.ids);
+  if (out.error) return res.status(400).json(out);
+  if (summary.enabled) summary.summarize(out.meeting);
+  res.json({ ok: true, id: out.meeting.id });
+});
+app.delete('/api/admin/meetings/:id', auth.requireAdmin, (req, res) => {
+  const out = merge.unjoin(req.params.id);
+  if (out.error) return res.status(out.error.startsWith('No such') ? 404 : 400).json(out);
+  res.json(out);
 });
 
 // ---------- Remote control recordings ----------

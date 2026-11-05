@@ -36,11 +36,49 @@ function transcriptCell(m) {
   return b;
 }
 function roomCell(m) {
-  if (!m.title) return m.room;
+  const note = m.mergedFrom?.length ? `Joined from ${m.mergedFrom.length} meetings` : m.joinedInto?.length ? 'Part of a joined meeting' : '';
+  if (!m.title && !note) return m.room;
   const d = document.createElement('div');
-  d.append(m.title, Object.assign(document.createElement('div'), { className: 'muted small', textContent: m.room }));
+  d.append(m.title || m.room);
+  if (m.title) d.append(Object.assign(document.createElement('div'), { className: 'muted small', textContent: m.room }));
+  if (note) d.append(Object.assign(document.createElement('div'), { className: 'muted small joined-note', textContent: note }));
   return d;
 }
+// ---------- Joining meetings ----------
+// A call that got cut off and carried on in a new one: tick its parts in the
+// Finished table and join them. The server makes a new meeting with both
+// transcripts in order and writes one summary (and PDF) from it.
+const picked = new Set();
+function pickCell(m) {
+  if (!m.transcriptLines) return '';
+  const box = Object.assign(document.createElement('input'), { type: 'checkbox', checked: picked.has(m.id), title: 'Pick to join with another meeting' });
+  box.setAttribute('aria-label', `Pick ${m.title || m.room} to join`);
+  box.onchange = () => { if (box.checked) picked.add(m.id); else picked.delete(m.id); joinBar(); };
+  return box;
+}
+function joinBar() {
+  const n = picked.size;
+  $('mergeBtn').hidden = n < 2;
+  $('mergeBtn').textContent = `Join ${n} meetings`;
+  $('mergeClear').hidden = n === 0;
+  $('mergeHint').textContent = n === 0 ? 'Was one meeting cut off? Tick its parts to join their transcripts into one summary.'
+    : n === 1 ? 'Pick at least one more meeting to join.'
+    : 'Their transcripts are put together in the order things were said, and a new summary is written. The originals stay as they are.';
+}
+$('mergeClear').onclick = () => { picked.clear(); joinBar(); refresh(); };
+$('mergeBtn').onclick = async () => {
+  $('mergeBtn').disabled = true;
+  try {
+    const r = await fetch('/api/admin/meetings/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [...picked] }) });
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok) { $('mergeHint').textContent = out.error || 'Could not join those meetings.'; return; }
+    picked.clear();
+    joinBar();
+    pages.set('recentRows', 0); // the joined meeting is first in the list
+    await refresh();
+    openTranscript(out.id);
+  } finally { $('mergeBtn').disabled = false; }
+};
 // Open meetings get a green dot: they're live.
 function liveCell(c) {
   const d = document.createElement('div');
@@ -116,8 +154,11 @@ async function refresh() {
     new Date(d.day + 'T12:00:00Z').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
     d.meetings, fmtDuration(d.minutes * 60_000), fmtAudio(d.audioSec), d.clips, fmtCost(cost(d.audioSec)), d.relayRecv ? fmtGB(d.relayRecv) : '–',
   ]), { page: 10 });
+  // Forget picks of meetings that are gone (a removed joined meeting).
+  for (const id of picked) if (!s.recent.some((m) => m.id === id && m.transcriptLines)) picked.delete(id);
+  joinBar();
   fill('recentRows', 'recentEmpty', s.recent.map((m) => [
-    roomCell(m), fmtWhen(m.startedAt), m.interrupted ? 'Unknown (server restarted)' : fmtDuration(m.endedAt - m.startedAt), m.names.join(', '), fmtAudio(m.audioSec || 0), transcriptCell(m),
+    pickCell(m), roomCell(m), fmtWhen(m.startedAt), m.interrupted ? 'Unknown (server restarted)' : fmtDuration(m.endedAt - m.startedAt), m.names.join(', '), fmtAudio(m.audioSec || 0), transcriptCell(m),
   ]), { page: 10 });
 }
 
@@ -133,14 +174,26 @@ async function openTranscript(id) {
   if (!r.ok) return;
   shown = await r.json();
   const t = shown.transcript;
-  $('txTitle').textContent = shown.summary?.title || `Meeting in ${shown.room}`;
-  $('txMeta').textContent = `${shown.room} · ${fmtWhen(shown.startedAt)} · saved by ${t.by} at ${fmtWhen(t.savedAt)} · ${t.lines.length} lines`;
-  $('txLines').replaceChildren(...t.lines.map((l) => {
+  $('txTitle').textContent = shown.summary?.title || shown.title || `Meeting in ${shown.room}`;
+  $('txMeta').textContent = shown.mergedFrom?.length
+    ? `Joined from ${shown.mergedFrom.length} meetings: ${shown.mergedFrom.map((p) => `${p.title || p.room} (${fmtWhen(p.startedAt)})`).join(', ')} · ${t.lines.length} lines`
+    : `${shown.room} · ${fmtWhen(shown.startedAt)} · saved by ${t.by} at ${fmtWhen(t.savedAt)} · ${t.lines.length} lines`;
+  $('sumUnjoin').hidden = !shown.mergedFrom;
+  let part = -1;
+  $('txLines').replaceChildren(...t.lines.flatMap((l) => {
+    const out = [];
+    // In a joined meeting, a divider marks where each call starts.
+    if (shown.mergedFrom && l.part != null && l.part !== part) {
+      part = l.part;
+      const src = shown.mergedFrom[part];
+      out.push(el('div', 'tx-part', `Meeting ${part + 1} of ${shown.mergedFrom.length}${src ? ` · ${src.title || src.room} · ${fmtWhen(src.startedAt)}` : ''}`));
+    }
     const p = el('p');
+    out.push(p);
     const head = el('span', 'tx-who');
     head.append(el('b', null, l.name), el('span', 'muted small', new Date(l.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })));
     p.append(head, el('span', null, l.text));
-    return p;
+    return out;
   }));
   renderSummary();
   renderAgenda();
@@ -261,11 +314,21 @@ $('sumRedo').onclick = async () => {
   shown.summary = { ...(shown.summary || {}), status: 'working' };
   renderSummary();
 };
+$('sumUnjoin').onclick = async () => {
+  if (!confirm('Remove this joined meeting, with its summary and agenda? The meetings it was made from stay as they are.')) return;
+  const r = await fetch(`/api/admin/meetings/${encodeURIComponent(shown.id)}`, { method: 'DELETE' });
+  if (!r.ok) { $('sumStatus').textContent = (await r.json().catch(() => ({}))).error || 'Could not remove it.'; return; }
+  $('txDialog').close();
+  refresh();
+};
 $('txClose').onclick = () => $('txDialog').close();
 $('txDl').onclick = () => {
   const t = shown.transcript;
   const body = `Transcript of ${shown.room}, ${new Date(shown.startedAt).toLocaleString()}\n\n`
-    + t.lines.map((l) => `[${new Date(l.at).toLocaleTimeString()}] ${l.name}: ${l.text}`).join('\n') + '\n';
+    + t.lines.map((l, i) => {
+      const src = shown.mergedFrom && l.part != null && l.part !== t.lines[i - 1]?.part ? shown.mergedFrom[l.part] : null;
+      return `${src ? `${i ? '\n' : ''}--- Meeting ${l.part + 1} of ${shown.mergedFrom.length}: ${src.title || src.room}, ${new Date(src.startedAt).toLocaleString()} ---\n` : ''}[${new Date(l.at).toLocaleTimeString()}] ${l.name}: ${l.text}`;
+    }).join('\n') + '\n';
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([body], { type: 'text/plain' }));
   a.download = `transcript-${shown.room}-${new Date(shown.startedAt).toISOString().slice(0, 10)}.txt`;

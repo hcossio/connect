@@ -56,6 +56,12 @@
       <symbol id="i-back" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
       <symbol id="i-reload" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.5 0 4.9 1 6.7 2.8L21 8"/><path d="M21 3v5h-5"/></symbol>
       <symbol id="i-whatsapp" viewBox="0 0 24 24"><path d="M3 21l1.65-3.8a9 9 0 1 1 3.4 2.9z"/><path transform="translate(7.3 7.3) scale(.4)" stroke-width="4" d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M10 12h11"/><path d="M10 18h11"/><path d="M10 6h11"/><path d="M4 10h2"/><path d="M4 6h1v4"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L7.5 3.64A1 1 0 0 0 6 4.5z"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></symbol>
+      <symbol id="i-next" viewBox="0 0 24 24"><path d="M5 4.5v15a1 1 0 0 0 1.5.86L17 14"/><path d="M5 4.5a1 1 0 0 1 1.5-.86L17 10"/><path d="M20 4v16"/></symbol>
+      <symbol id="i-prev" viewBox="0 0 24 24"><path d="M19 4.5v15a1 1 0 0 1-1.5.86L7 14"/><path d="M19 4.5a1 1 0 0 0-1.5-.86L7 10"/><path d="M4 4v16"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
       <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
       <symbol id="i-logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="var(--accent)" stroke="none"/><path d="M11 8v15l4-4 3 6 2.5-1.2-3-5.8H23z" fill="#fff" stroke="none"/></symbol>
     </defs>
@@ -186,6 +192,19 @@
           <button class="tile-btn pop-btn" type="button" title="Pop out the cameras so they float over other windows" hidden><svg class="icon sm"><use href="#i-popout"/></svg></button>
         </div>
 
+        <div id="agendaBar" class="agenda-bar" hidden aria-live="polite">
+          <span id="abCount" class="ab-count"></span>
+          <button id="abText" class="ab-text" type="button" title="Show the agenda">
+            <b id="abNow"></b>
+            <span id="abNext" class="ab-next"></span>
+          </button>
+          <span id="abClock" class="ab-clock"></span>
+          <span class="ab-btns runner-only">
+            <button id="abMore" class="ab-btn" type="button" title="Give this point 2 more minutes">+2</button>
+            <button id="abPlay" class="ab-btn" type="button" title="Pause"><svg class="icon sm"><use href="#i-pause"/></svg></button>
+            <button id="abNextBtn" class="ab-btn" type="button" title="Next point"><svg class="icon sm"><use href="#i-next"/></svg></button>
+          </span>
+        </div>
         <div id="controllingBanner" class="banner" hidden>
           <svg class="icon sm"><use href="#i-pointer"/></svg>
           <span>You're controlling <b class="peer-name"></b>'s computer</span>
@@ -210,6 +229,7 @@
           <div class="tabs" role="tablist">
             <button id="chatTab" class="tab active" type="button" role="tab" aria-selected="true">Chat</button>
             <button id="transcriptTab" class="tab" type="button" role="tab" aria-selected="false">Transcript<span id="txDot" class="rec-dot" hidden></span></button>
+            <button id="agendaTab" class="tab" type="button" role="tab" aria-selected="false">Agenda<span id="agDot" class="live-dot" hidden></span></button>
           </div>
           <span id="chatHint" class="muted small hint">Shift+Enter for a new line</span>
           <span class="spacer"></span>
@@ -248,6 +268,25 @@
             <p class="muted small center">Everyone's words show up here with their name once the meeting starter turns the transcript on. The meeting starter can save it with the meeting, and anyone can download it.</p>
           </div>
           <p id="txStatus" class="muted small tx-note" hidden></p>
+        </div>
+        <div id="agendaPane" class="agenda-pane" hidden>
+          <div class="ag-intro">
+            <p id="agHead" class="ag-head"></p>
+            <p id="agNote" class="muted small"></p>
+          </div>
+          <div class="ag-run runner-only">
+            <button id="agStart" class="btn sm primary" type="button"><svg class="icon sm"><use href="#i-play"/></svg><span>Start</span></button>
+            <button id="agPrev" class="icon-btn" type="button" title="Back to the previous point"><svg class="icon"><use href="#i-prev"/></svg></button>
+            <button id="agNext" class="icon-btn" type="button" title="Next point"><svg class="icon"><use href="#i-next"/></svg></button>
+            <span class="spacer"></span>
+            <button id="agOn" class="opt slim" type="button" role="switch" title="Show the current point and its countdown to everyone in the call"><span>Show to everyone</span><span class="switch"></span></button>
+          </div>
+          <ol id="agList" class="ag-list"></ol>
+          <div class="ag-foot runner-only">
+            <button id="agAdd" class="btn sm" type="button"><svg class="icon sm"><use href="#i-plus"/></svg><span>Add a point</span></button>
+            <button id="agLoad" class="btn sm" type="button" title="Use the agenda planned from the last meeting's summary">Use planned agenda</button>
+            <button id="agReset" class="btn sm" type="button" title="Clear the clocks and go back to the first point">Start over</button>
+          </div>
         </div>
       </aside>
     </main>
@@ -293,6 +332,9 @@
       </button>
       <button id="controlBtn" class="opt" type="button" role="menuitemcheckbox" title="Ask to control their computer" disabled>
         <svg class="icon"><use href="#i-pointer"/></svg><span class="label">Control</span><span class="switch"></span>
+      </button>
+      <button id="agendaBtn" class="opt" type="button" role="menuitemcheckbox" title="Run the meeting point by point, with a countdown for each">
+        <svg class="icon"><use href="#i-list"/></svg><span>Agenda</span><span class="switch"></span>
       </button>
       <button id="browserBtn" class="opt" type="button" role="menuitemcheckbox" title="Open a browser everyone in the call can see and use" hidden>
         <svg class="icon"><use href="#i-globe"/></svg><span>Shared browser</span><span class="switch"></span>
@@ -399,6 +441,7 @@
   <script src="/app.js"></script>
   <script src="/board.js"></script>
   <script src="/people.js"></script>
+  <script src="/agenda.js"></script>
   <template id="peerTileTpl">
     <div class="tile peer">
       <video autoplay playsinline></video>

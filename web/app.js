@@ -1018,6 +1018,7 @@ async function onSignal(msg) {
       syncTranscriptUI();
       syncHostUI();
       for (const o of msg.peers) addPeer(o.id, o.name, true);
+      onAgenda(msg.agenda, msg.canRunAgenda);
       if (state.isHost && !tx.on && !tx.asked) askTranscript();
       updateStage();
       updateStatus();
@@ -1036,10 +1037,13 @@ async function onSignal(msg) {
       // Whoever started the session left; the "still there?" check is ours now.
       state.hostId = msg.id;
       state.isHost = msg.id === state.myId;
+      if (msg.canRunAgenda != null) onAgenda(null, msg.canRunAgenda);
       syncTranscriptUI();
       syncHostUI();
       onHostChanged();
       break;
+    case 'agenda': onAgenda(msg.agenda, null, msg); break;
+    case 'agenda-error': toast(msg.message, 6000); break;
     case 'browser': onBrowser(msg); break;
     case 'browser-frame': onBrowserFrame(msg.data); break;
     case 'browser-error': toast(msg.message, 6000); break;
@@ -2250,13 +2254,13 @@ $('txLang').value = tx.lang;
 const engineNow = () => (tx.engine === 'cloud' && !tx.cloud ? 'device' : tx.engine);
 
 function showTab(which) {
-  const transcript = which === 'transcript';
-  $('chat').classList.toggle('show-transcript', transcript);
-  $('transcriptPane').hidden = !transcript;
-  $('chatTab').classList.toggle('active', !transcript);
-  $('transcriptTab').classList.toggle('active', transcript);
-  $('chatTab').setAttribute('aria-selected', String(!transcript));
-  $('transcriptTab').setAttribute('aria-selected', String(transcript));
+  $('chat').classList.toggle('show-transcript', which !== 'chat'); // the chat's own list and box step aside
+  $('transcriptPane').hidden = which !== 'transcript';
+  $('agendaPane').hidden = which !== 'agenda';
+  for (const [id, name] of [['chatTab', 'chat'], ['transcriptTab', 'transcript'], ['agendaTab', 'agenda']]) {
+    $(id).classList.toggle('active', which === name);
+    $(id).setAttribute('aria-selected', String(which === name));
+  }
 }
 $('chatTab').onclick = () => showTab('chat');
 $('transcriptTab').onclick = () => showTab('transcript');

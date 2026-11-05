@@ -178,10 +178,12 @@ function initials(name) {
 function syncMediaButtons() {
   const a = state.camStream.getAudioTracks()[0];
   const v = state.camStream.getVideoTracks()[0];
+  const locked = typeof floorBlocksMic === 'function' && floorBlocksMic(); // pass the mic: someone else has it
   for (const b of $$('.media-mic')) {
     b.disabled = !a;
     b.classList.toggle('off', !a || !a.enabled);
-    b.title = !a ? 'No microphone' : a.enabled ? 'Mute microphone' : 'Unmute microphone';
+    b.classList.toggle('locked', locked);
+    b.title = !a ? 'No microphone' : locked ? 'Only the person with the mic can talk. Raise your hand to get in line.' : a.enabled ? 'Mute microphone' : 'Unmute microphone';
   }
   for (const b of $$('.media-cam')) {
     b.disabled = !v;
@@ -204,7 +206,12 @@ function syncNoiseButtons() {
   }
 }
 for (const b of $$('.media-mic')) b.onclick = () => {
-  const t = state.camStream.getAudioTracks()[0]; if (t) t.enabled = !t.enabled; syncMediaButtons(); sendMe();
+  const t = state.camStream.getAudioTracks()[0];
+  if (t && !t.enabled && typeof floorBlocksMic === 'function' && floorBlocksMic()) {
+    toast(me.hand ? "You're in line for the mic. You can talk when it's passed to you." : 'Only the person with the mic can talk. Raise your hand to get in line.', 4000);
+    return;
+  }
+  if (t) t.enabled = !t.enabled; syncMediaButtons(); sendMe();
 };
 for (const b of $$('.media-cam')) b.onclick = () => {
   const t = state.camStream.getVideoTracks()[0]; if (t) t.enabled = !t.enabled; syncMediaButtons();
@@ -1019,6 +1026,8 @@ async function onSignal(msg) {
       syncHostUI();
       for (const o of msg.peers) addPeer(o.id, o.name, true);
       onAgenda(msg.agenda, msg.canRunAgenda);
+      if (msg.floor) onFloor(msg.floor);
+      if (me.hand) signal({ type: 'floor', action: 'hand', up: true }); // back in line after a reconnect
       if (state.isHost && !tx.on && !tx.asked) askTranscript();
       updateStage();
       updateStatus();
@@ -1044,6 +1053,7 @@ async function onSignal(msg) {
       break;
     case 'agenda': onAgenda(msg.agenda, null, msg); break;
     case 'agenda-error': toast(msg.message, 6000); break;
+    case 'floor': onFloor(msg.floor, msg); break;
     case 'browser': onBrowser(msg); break;
     case 'browser-frame': onBrowserFrame(msg.data); break;
     case 'browser-error': toast(msg.message, 6000); break;

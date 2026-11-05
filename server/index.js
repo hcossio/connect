@@ -17,6 +17,7 @@ const summaryDoc = require('./summarydoc');
 const agenda = require('./agenda');
 const merge = require('./merge');
 const liveAgenda = require('./liveagenda');
+const floor = require('./floor');
 const turn = require('./turn');
 const connlog = require('./connlog');
 
@@ -494,6 +495,12 @@ function send(ws, msg) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
 }
 
+function sendFloor(room, event, byId) {
+  if (rooms.get(room.meeting.room) !== room) return; // the call already ended
+  const view = floor.view(room);
+  for (const p of room.peers) send(p, { type: 'floor', floor: view, event, byId });
+}
+
 function scheduleCheck(room) {
   clearTimeout(room.checkTimer);
   clearTimeout(room.graceTimer);
@@ -510,6 +517,7 @@ function endSession(room, reason, leaver) {
   clearTimeout(room.graceTimer);
   for (const [name, r] of rooms) if (r === room) rooms.delete(name);
   liveAgenda.record(room);
+  floor.close(room);
   if (!room.meeting.endedAt) store.endMeeting(room.meeting);
   summarizeIfNew(room.meeting);
   dropFiles(room);
@@ -549,7 +557,7 @@ wss.on('connection', (ws, req) => {
     const pass = crypto.randomBytes(16).toString('hex');
     r.passes.add(pass);
     r.peers.add(ws);
-    send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY, title: r.meeting.title, waitingRoom: r.waitingRoom, browser: sharedBrowser.available(), ice: turn.iceServers(), pass, agenda: r.agenda ? liveAgenda.view(r.agenda) : null, canRunAgenda: r.host === ws || !!ws.user });
+    send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY, title: r.meeting.title, waitingRoom: r.waitingRoom, browser: sharedBrowser.available(), ice: turn.iceServers(), pass, agenda: r.agenda ? liveAgenda.view(r.agenda) : null, canRunAgenda: r.host === ws || !!ws.user, floor: r.floor ? floor.view(r) : null });
     connlog.log(r.meeting, 'join', { who: ws.displayName, id: ws.peerId, device: ws.device, ua: ws.ua, signedIn: !!ws.user, relay: turn.hasRelay(), people: r.peers.size });
     sharedBrowser.joined(r, ws);
     for (const p of r.peers) if (p !== ws) send(p, { type: 'peer-joined', id: ws.peerId, name: ws.displayName });
@@ -656,6 +664,14 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
+    // Who gets to talk: wait in line, or pass the mic. Only the host switches them.
+    if (msg.type === 'floor') {
+      const r = room;
+      const event = floor.apply(r, ws, msg, (ev) => sendFloor(r, ev));
+      if (event) sendFloor(r, event, ws.peerId);
+      return;
+    }
+
     if (msg.type === 'session-continue') {
       if (room.host === ws) scheduleCheck(room);
       return;
@@ -679,6 +695,8 @@ wss.on('connection', (ws, req) => {
     if (!room.peers.size) return endSession(room, 'left', ws);
     sharedBrowser.left(room, ws);
     for (const p of room.peers) send(p, { type: 'peer-left', id: ws.peerId, name: ws.displayName });
+    const r = room;
+    floor.left(r, ws, (ev) => sendFloor(r, ev));
     // Someone still has to be asked whether to continue: pass it on.
     if (room.host === ws) {
       room.host = room.peers.values().next().value;

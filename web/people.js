@@ -64,6 +64,7 @@ function renderPeer(p) {
     sendTo(p.id, { t: 'mute' });
     toast(`You muted ${p.name}`, 2500);
   };
+  if (typeof renderFloor === 'function') renderFloor();
 }
 function renderSelf() {
   nameTag($('selfTile').querySelector('.name-tag'), 'You', IS_PHONE ? 'phone' : 'desktop', !micOn());
@@ -78,6 +79,7 @@ function syncHostUI() {
   $('resetAllBtn').hidden = !state.isHost;
   for (const p of peers.values()) if (p.device) renderPeer(p);
   if (typeof syncBoard === 'function') syncBoard();
+  if (typeof renderFloor === 'function') renderFloor();
 }
 function peerGone(p) {
   board.live.delete(p.id);
@@ -89,6 +91,8 @@ function setHand(on, byName) {
   if (me.hand === on) return;
   me.hand = on;
   sendMe();
+  signal({ type: 'floor', action: 'hand', up: on }); // the server keeps the line, in order
+  if (typeof renderFloor === 'function') renderFloor();
   if (!on && byName) toast(`${byName} lowered your hand`);
 }
 $('handBtn').onclick = () => { setHand(!me.hand); setReactOpen(false); };
@@ -158,7 +162,7 @@ renderSelf();
 
 
 // ---------- Tools menu: draw, pointers and the shared browser ----------
-const TOOLS = ['drawBtn', 'pointersBtn', 'controlBtn', 'agendaBtn', 'browserBtn'];
+const TOOLS = ['drawBtn', 'pointersBtn', 'controlBtn', 'agendaBtn', 'lineBtn', 'micModeBtn', 'browserBtn'];
 function setToolsOpen(open) {
   $('toolsMenu').hidden = !open;
   $('toolsBtn').classList.toggle('open', open);

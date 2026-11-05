@@ -101,6 +101,15 @@ Chat messages are bubbles with the time and a copy button. The chat starts close
 
 The transcript saves itself: each line is sent to the server as soon as it's transcribed and kept with the meeting, so nothing is lost if nobody presses Save, someone's browser closes, or the host leaves early. Transcripts are listed on the admin page, and the summary is written when the meeting ends. **Save** in the Transcript tab is still there for the host; it adds any lines the server missed and writes the summary right away.
 
+## Wait in line and pass the mic
+
+Two ways for the host to run who talks, both switched on and off from **Tools** (only the host sees them). Raising your hand puts you in line, in the order hands went up, and your place shows as a number on your hand.
+
+- **Wait in line.** When nobody has the floor, the first person in line gets a 30 second countdown in a bar at the top of everyone's call. When it runs out they have the floor: their camera glows gold with a mic on it, their mic is turned on, and everyone else is muted once. Anyone can unmute again. The speaker presses **I'm done** to start the next person's countdown.
+- **Pass the mic.** A 10 second countdown fills the middle of the screen so people can raise their hands. Then only the person holding the mic can talk: everyone else's mic is held off until it's passed to them. It goes to the first hand up, and the holder presses **Pass to (name)** to hand it down the line, or puts it down if nobody's waiting (the next hand up takes it). There's no time limit; the bar shows how long the holder has been talking.
+
+The host can override either one: **Now** skips a countdown, **Next** or **Pass** moves the line on, the mic button on a camera gives that person the floor or the mic straight away, the mic button in the bar takes it, and the X turns the mode off. The server keeps the line and the clocks, so people who join late or reload see the same thing, and a holder who leaves passes the mic on. The code is in `server/floor.js` and `web/floor.js`.
+
 ## Agenda mode
 
 To keep a meeting on track, the host (or anyone signed in) opens **Tools → Agenda**. They list the points and how many minutes each gets, or press **Use planned agenda** to load the one planned from the last meeting's summary (see Next meeting below). The list can be changed before the call or while it runs. **Start** puts a bar at the top of everyone's call with the point being discussed, its countdown, what comes next and when the meeting will end at this pace. The bar turns amber in a point's last minute and red with the time over once it runs out, and whoever runs the agenda hears one soft ding. They can pause, give a point two more minutes, or move to the next one from the bar, or jump to any point from the list. The server keeps the agenda's state, so people who join late or reload see the same point and clock. When the meeting ends, how long each point actually took is kept with the meeting.

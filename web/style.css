@@ -1069,3 +1069,91 @@ li[data-state="done"] .ag-num { color: var(--ok); border-color: rgba(62,207,142,
 li.over .ag-time { color: #ff6b6b; }
 .ag-foot { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 24px 0; }
 .ag-foot .btn { gap: 6px; }
+
+/* ---------- Wait in line and pass the mic ---------- */
+.floor-bar {
+  position: absolute; top: 84px; left: 50%; transform: translateX(-50%); z-index: 9;
+  display: flex; align-items: center; gap: 12px; width: min(640px, calc(100% - 32px)); min-height: 60px;
+  padding: 8px 8px 8px 10px; border-radius: 999px; background: rgba(16,16,16,.85); border: 1px solid var(--glass-line); color: #fff;
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); transition: border-color .3s, background .3s;
+}
+.agenda-bar:not([hidden]) ~ .floor-bar { top: 154px; }
+.fb-icon {
+  flex: none; display: grid; place-items: center; min-width: 44px; height: 44px; padding: 0 8px; border-radius: 999px;
+  background: rgba(255,255,255,.1); font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", var(--font);
+}
+.fb-text { display: grid; gap: 1px; min-width: 0; }
+.fb-text b { font-size: 15.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-sub { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-clock { flex: none; margin-left: auto; padding: 0 4px; font: 700 24px/1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.fb-clock:empty { display: none; }
+.fb-btns { flex: none; display: flex; gap: 4px; }
+.fb-btns .ab-btn[hidden] { display: none; }
+.fb-wide { display: flex; gap: 6px; padding: 0 14px; white-space: nowrap; }
+.fb-btns .ab-btn.active { background: #fff; color: #000; }
+.fb-go { background: #f5c542; color: #000; }
+.fb-go:hover { background: #ffd65c; }
+.floor-bar[data-state="mine"], .floor-bar[data-state="live"] { border-color: rgba(245,197,66,.7); }
+.floor-bar[data-state="mine"] .fb-icon { background: #f5c542; }
+.floor-bar[data-state="mine"] .fb-clock, .floor-bar[data-state="live"] .fb-clock { color: #f5c542; }
+.floor-bar[data-state="count"] .fb-clock { color: #fff; }
+.floor-bar[data-state="warn"] { border-color: #f5b041; }
+.floor-bar[data-state="warn"] .fb-clock { color: #f5b041; animation: blink 1s infinite; }
+
+/* Whoever has the floor glows gold, with a mic on their camera; the person up next pulses. */
+.tile.has-floor { box-shadow: inset 0 0 0 3px #f5c542, 0 0 28px rgba(245,197,66,.55); }
+.tile.has-floor::after {
+  content: "🎤"; position: absolute; right: 10px; bottom: 10px; z-index: 2; width: 34px; height: 34px; display: grid; place-items: center;
+  border-radius: 50%; background: #f5c542; font-size: 18px; animation: hand-in .35s ease-out;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+.tile.is-up { animation: up-next 1.2s ease-in-out infinite; }
+@keyframes up-next { 50% { box-shadow: inset 0 0 0 3px rgba(245,197,66,.8); } }
+/* Your place in line, on the raised hand. */
+.hand-tag[data-pos]::after {
+  content: attr(data-pos); position: absolute; right: -6px; bottom: -6px; min-width: 18px; height: 18px; padding: 0 4px;
+  display: grid; place-items: center; border-radius: 999px; background: #f5c542; color: #000; font: 700 11px/1 var(--font);
+  box-shadow: 0 0 0 2px #000;
+}
+.give-btn { right: 88px; background: rgba(245,197,66,.9); color: #000; }
+.give-btn[hidden] { display: none; }
+.stage[data-mode="cam"] .grid[data-count="1"] .give-btn { right: 104px; }
+.ctrl.media-mic.locked { opacity: .55; }
+
+/* The big countdown, and the moment the mic changes hands. */
+.floor-pop { position: absolute; inset: 0; z-index: 10; display: grid; place-items: center; pointer-events: none; }
+.floor-pop[hidden] { display: none; }
+.fp-card {
+  display: grid; justify-items: center; gap: 6px; min-width: 260px; max-width: calc(100% - 40px); padding: 26px 34px 24px;
+  border-radius: 28px; background: rgba(16,16,16,.9); border: 1px solid rgba(245,197,66,.6); text-align: center; pointer-events: auto;
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.fp-emoji { font-size: 44px; line-height: 1; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+.fp-title { font-size: 19px; font-weight: 700; }
+.fp-num { font: 800 84px/1 var(--mono); color: #f5c542; font-variant-numeric: tabular-nums; }
+.fp-num:empty, .fp-sub:empty { display: none; }
+.fp-sub { max-width: 320px; font-size: 14px; color: var(--muted); }
+.fp-card .btn { margin-top: 8px; }
+.fp-card .btn[hidden] { display: none; }
+.floor-pop.tick .fp-num { animation: fp-tick .9s ease-out; }
+@keyframes fp-tick { 0% { transform: scale(1.35); opacity: .4; } 30% { transform: scale(1); opacity: 1; } }
+.floor-pop[data-kind="pop"] .fp-card { pointer-events: none; }
+.floor-pop.go[data-kind="pop"] .fp-card { animation: fp-pop 2.2s ease-out forwards; }
+.floor-pop.go[data-kind="pop"] .fp-emoji { animation: fp-drop .6s cubic-bezier(.3,1.6,.5,1); }
+@keyframes fp-pop { 0% { transform: scale(.6); opacity: 0; } 12% { transform: scale(1.04); opacity: 1; } 20% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-16px); } }
+@keyframes fp-drop { 0% { transform: translateY(-60px) rotate(-30deg); } 100% { transform: none; } }
+
+@media (max-width: 640px) {
+  .floor-bar { top: calc(76px + env(safe-area-inset-top, 0px)); width: calc(100% - 24px); gap: 8px; min-height: 54px; padding: 6px; flex-wrap: wrap; border-radius: 26px; }
+  .agenda-bar:not([hidden]) ~ .floor-bar { top: calc(140px + env(safe-area-inset-top, 0px)); }
+  .fb-icon { min-width: 38px; height: 38px; font-size: 17px; }
+  .fb-text { flex: 1; }
+  .fb-text b { font-size: 14px; }
+  .fb-clock { font-size: 18px; }
+  .fb-btns { width: 100%; justify-content: flex-end; }
+  .fb-btns:not(:has(.ab-btn:not([hidden]))) { display: none; }
+  .ab-btn { min-width: 36px; height: 36px; }
+  .fp-num { font-size: 64px; }
+  .fp-card { padding: 20px 24px; }
+}

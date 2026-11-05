@@ -980,6 +980,16 @@ button.link:hover { color: var(--muted); }
 .ctrl .tools-dot[hidden] { display: none; }
 .ctrl.active .tools-dot { background: #000; box-shadow: 0 0 0 2px #fff; }
 
+/* Joining meetings that were cut off: pick the parts in the Finished table. */
+.join-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: -4px 0 8px; min-height: 34px; }
+.join-bar .muted.small { margin: 0; }
+.join-bar .btn[hidden] { display: none; }
+.panel th.pick-col, .panel td.pick-col { width: 34px; padding-right: 8px; }
+.pick-col input { width: 18px; height: 18px; margin: 0; accent-color: #fff; cursor: pointer; vertical-align: middle; }
+.joined-note { margin-top: 2px; }
+.tx-part { margin: 18px 0 8px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+.tx-part:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* ---------- Agenda mode ---------- */
 .agenda-bar {
   position: absolute; top: 84px; left: 50%; transform: translateX(-50%); z-index: 9;

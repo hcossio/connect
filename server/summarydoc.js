@@ -51,6 +51,13 @@ const STYLE = `
   @media print { .doc { padding: 0 2px; max-width: none; } }
 `;
 
+// The meeting's day, or first and last day when a joined meeting spans several.
+function days(m) {
+  const first = fmtDay(m.startedAt);
+  const last = fmtDay(m.endedAt || m.startedAt);
+  return m.mergedFrom?.length > 1 && last !== first ? `${chip(first)} – ${chip(last)}` : chip(first);
+}
+
 function html(m) {
   const s = m.summary;
   const L = s.labels || {};
@@ -62,7 +69,7 @@ function html(m) {
   const point = (p, sep) => `<li>${p.lead ? `<b>${esc(p.lead.replace(/[.:]\s*$/, ''))}${/[?!]$/.test(p.lead) ? '' : sep}</b> ` : ''}${esc(p.text)}</li>`;
   const out = [
     `<h1>${esc(s.title || `Meeting in ${m.room}`)}</h1>`,
-    `<div class="byline">${chip(fmtDay(m.startedAt))}${m.host ? ` · ${chip(`@${m.host}`)}` : ''}</div>`,
+    `<div class="byline">${days(m)}${m.host ? ` · ${chip(`@${m.host}`)}` : ''}${m.mergedFrom?.length > 1 ? ` · ${chip(lab('joined', '') || `Joined from ${m.mergedFrom.length} calls`)}` : ''}</div>`,
     `<h2>${esc(lab('summary', 'Summary'))}</h2>`,
     ...overview.map((p) => `<p>${esc(p)}</p>`),
   ];

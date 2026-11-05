@@ -38,8 +38,31 @@ Rules:
 - Keep exact details: names, numbers, dates, quotes, file names, commands and error text.
 - Write everything, labels included, in the language most of the call was in. Use the real names from the call.`;
 
+const hhmm = (t) => new Date(t).toISOString().slice(11, 16);
+const ymd = (t) => new Date(t).toISOString().slice(0, 10);
 function transcriptText(m) {
-  return m.transcript.lines.map((l) => `[${new Date(l.at).toISOString().slice(11, 16)}] ${l.name}: ${l.text}`).join('\n');
+  const parts = m.mergedFrom || [];
+  let part = -1;
+  return m.transcript.lines.flatMap((l) => {
+    const head = [];
+    // A joined meeting: mark where each call starts, so the model sees the break.
+    if (parts.length && l.part != null && l.part !== part) {
+      part = l.part;
+      const p = parts[part];
+      if (p) head.push(`--- Call ${part + 1} of ${parts.length}: ${ymd(p.startedAt)} ${hhmm(p.startedAt)}–${hhmm(p.endedAt || p.startedAt)} UTC ---`);
+    }
+    return [...head, `[${hhmm(l.at)}] ${l.name}: ${l.text}`];
+  }).join('\n');
+}
+// What the model is told about a meeting that was joined from several calls.
+function joinedNote(m) {
+  const parts = m.mergedFrom || [];
+  if (parts.length < 2) return '';
+  const when = parts.map((p, i) => `${i + 1}) "${p.title || p.room}" on ${ymd(p.startedAt)} ${hhmm(p.startedAt)}–${hhmm(p.endedAt || p.startedAt)} UTC`).join('; ');
+  return `\n\nThis meeting was held over ${parts.length} calls that were joined because the call got cut off or carried on later: ${when}. `
+    + 'Write one summary for the whole meeting, as if it were a single call: merge topics that continue across calls, and do not repeat points or tasks. '
+    + 'Mention the break only if it matters to the content. Also fill labels.joined with a short note in the call\'s language saying it joins the calls, '
+    + `e.g. "Joined from ${parts.length} calls" or "Unión de ${parts.length} llamadas".`;
 }
 
 // One JSON answer from Grok, trying the known model names until one works.
@@ -74,7 +97,7 @@ async function ask(system, user) {
   throw lastErr || new Error('No model answered');
 }
 
-const LABELS = { summary: 'Summary', participants: 'Participants', attended: 'Attended', absent: 'Did not attend', next_steps: 'Next steps', task: 'Task', owner: 'Owner', due: 'Due', status: 'Status', pending: 'Pending', unassigned: 'Unassigned', no_date: 'No date' };
+const LABELS = { summary: 'Summary', participants: 'Participants', attended: 'Attended', absent: 'Did not attend', next_steps: 'Next steps', task: 'Task', owner: 'Owner', due: 'Due', status: 'Status', pending: 'Pending', unassigned: 'Unassigned', no_date: 'No date', joined: '' };
 const str = (v, n) => String(v ?? '').trim().slice(0, n);
 
 /** The prompt to hand to a coding agent: the host's tasks and unowned ones to do, others' for context. */
@@ -110,7 +133,7 @@ async function summarize(m) {
   m.summary = { ...(m.summary || {}), status: 'working', startedAt: Date.now() };
   store.save();
   try {
-    const { raw } = await ask(SYSTEM, `Call "${m.room}" on ${new Date(m.startedAt).toISOString().slice(0, 10)} (${new Date(m.startedAt).toDateString()}). The host is ${m.host}. People: ${m.names.join(', ')}.\n\nTranscript:\n${transcriptText(m).slice(-120_000)}`);
+    const { raw } = await ask(SYSTEM, `Call "${m.room}" on ${new Date(m.startedAt).toISOString().slice(0, 10)} (${new Date(m.startedAt).toDateString()}). The host is ${m.host}. People: ${m.names.join(', ')}.${joinedNote(m)}\n\nTranscript:\n${transcriptText(m).slice(-120_000)}`);
     const list = (v, n, max = 30) => (Array.isArray(v) ? v : []).map((x) => str(x, n)).filter(Boolean).slice(0, max);
     const overview = Array.isArray(raw.overview) ? list(raw.overview, 3000, 3) : list([raw.overview ?? raw.summary], 4000, 1);
     const fu = raw.follow_up && typeof raw.follow_up === 'object' ? raw.follow_up : null;
@@ -134,7 +157,7 @@ async function summarize(m) {
       decisions: list(raw.decisions, 500),
       tasks: (Array.isArray(raw.tasks) ? raw.tasks : []).map((t) => ({ title: str(t?.title, 200), details: str(t?.details, 3000), owner: str(t?.owner, 40), due: str(t?.due, 80) }))
         .filter((t) => t.title).slice(0, 50),
-      labels: Object.fromEntries(Object.keys(LABELS).map((k) => [k, str(L[k], 40) || LABELS[k]])),
+      labels: Object.fromEntries(Object.keys(LABELS).map((k) => [k, str(L[k], 60) || LABELS[k]])),
     };
     m.summary = { status: 'done', at: Date.now(), model: workingModel, lines: m.transcript.lines.length, ...s, prompt: agentPrompt(m, s) };
   } catch (err) {

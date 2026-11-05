@@ -111,6 +111,8 @@ After a transcript is saved, Grok (xAI chat completions) writes the meeting summ
 
 **Next meeting (beta).** From the summary, Grok can also plan the follow-up meeting: its purpose, a short recap of where things were left, timed agenda items with who leads each and what it should decide, the pending tasks to review (copied straight from the summary, with a blank column for their status at the meeting), the deliverables people should bring, such as a content calendar, the open questions to settle, and what to prepare beforehand. It is written in the summary's language, from the summary alone, when someone presses **Write the agenda** in the meeting's **Next meeting** tab, which then offers **Download agenda PDF**. If the summary is rewritten later, the tab says so.
 
+**Joining meetings that were cut off.** When a call drops and carries on in a new one, tick the parts in the **Finished** table on the admin page's **Meetings** tab and press **Join meetings**. Connect makes a new meeting from them, marked "Joined from N meetings", with every transcript line in the order it was said and a divider where each call starts, and Grok writes one summary for the whole conversation, which gives the usual PDF and next-meeting agenda. The original meetings stay as they were (marked "Part of a joined meeting"), and **Remove joined meeting** in the summary tab undoes a join. A joined meeting can be joined again with a later part.
+
 The model is `XAI_CHAT_MODEL` if set; otherwise the server tries `grok-4-fast`, then `grok-4`, then `grok-3-mini`, and keeps the first one that answers. A summary is rewritten at most once a minute.
 
 ## Noise filter

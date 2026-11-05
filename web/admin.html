@@ -81,9 +81,14 @@
       <p id="schedAllEmpty" class="muted small" hidden>Nothing scheduled.</p>
     </section>
 <section class="panel">
-      <h2>Finished</h2>
+      <div class="panel-head"><h2>Finished</h2></div>
+      <div class="join-bar">
+        <span id="mergeHint" class="muted small">Was one meeting cut off? Tick its parts to join their transcripts into one summary.</span>
+        <button id="mergeBtn" class="btn primary sm" type="button" hidden>Join meetings</button>
+        <button id="mergeClear" class="btn sm" type="button" hidden>Clear</button>
+      </div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Room</th><th>Started</th><th>Length</th><th>People</th><th>Transcribed</th><th>Transcript</th></tr></thead>
+        <thead><tr><th class="pick-col"><span class="sr-only">Pick</span></th><th>Room</th><th>Started</th><th>Length</th><th>People</th><th>Transcribed</th><th>Transcript</th></tr></thead>
         <tbody id="recentRows"></tbody>
       </table></div>
       <p id="recentEmpty" class="muted small" hidden>No finished meetings yet.</p>
@@ -183,6 +188,7 @@
         <button id="sumPdf" class="btn primary sm" type="button">Download PDF</button>
         <button id="sumCopy" class="btn sm" type="button">Copy agent prompt</button>
         <button id="sumRedo" class="btn sm" type="button">Write it again</button>
+        <button id="sumUnjoin" class="btn sm" type="button" hidden>Remove joined meeting</button>
         <span id="sumStatus" class="muted small"></span>
       </div>
       <div id="sumBody"></div>

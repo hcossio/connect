@@ -175,6 +175,7 @@
         <div class="stage-btns">
           <button id="splitBtn" class="btn sm" type="button" hidden><svg class="icon sm"><use href="#i-share"/></svg><span>Show all screens</span></button>
           <button id="selfViewBtn" class="btn sm" type="button" title="See your shared screen here, with what people draw on it" hidden><svg class="icon sm"><use href="#i-eye"/></svg><span>See my screen</span></button>
+          <button id="closeWbBtn" class="btn sm" type="button" title="Close the whiteboard for everyone" hidden><svg class="icon sm"><use href="#i-x"/></svg><span>Close whiteboard</span></button>
         </div>
 
         <div id="selfTile" class="tile self">
@@ -300,6 +301,9 @@
     <div id="settingsMenu" class="settings-menu" role="menu" hidden>
       <button id="muteAllBtn" class="opt" type="button" role="menuitem" hidden>
         <svg class="icon"><use href="#i-mic-off"/></svg><span>Mute everyone</span>
+      </button>
+      <button id="resetAllBtn" class="opt" type="button" role="menuitem" title="Close the whiteboard, the shared browser and remote control, and erase every drawing, on everyone's screen" hidden>
+        <svg class="icon"><use href="#i-eraser"/></svg><span>Clear everyone's screen</span>
       </button>
       <a id="waMenu" class="opt" href="https://wa.me/" role="menuitem" target="_blank" rel="noopener">
         <svg class="icon"><use href="#i-whatsapp"/></svg><span>Invite on WhatsApp</span>

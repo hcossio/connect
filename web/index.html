@@ -331,7 +331,7 @@
       <button id="reactBtn" class="ctrl" type="button" title="Reactions and raise your hand" aria-haspopup="menu" aria-expanded="false">
         <svg class="icon"><use href="#i-smile"/></svg><span class="label">React</span><span id="handDot" class="hand-dot" hidden><svg class="icon"><use href="#i-hand"/></svg></span>
       </button>
-      <button id="settingsBtn" class="ctrl" type="button" title="Sound, noise filter and captions" aria-haspopup="menu" aria-expanded="false">
+      <button id="settingsBtn" class="ctrl" type="button" title="Microphone, speaker, noise filter and captions" aria-haspopup="menu" aria-expanded="false">
         <svg class="icon"><use href="#i-gear"/></svg><span class="label">Settings</span>
       </button>
       <button id="chatBtn" class="ctrl" type="button" title="Chat">
@@ -380,6 +380,12 @@
       <a id="waMenu" class="opt" href="https://wa.me/" role="menuitem" target="_blank" rel="noopener">
         <svg class="icon"><use href="#i-whatsapp"/></svg><span>Invite on WhatsApp</span>
       </a>
+      <label id="micPick" class="opt device-opt" title="Microphone" hidden>
+        <svg class="icon"><use href="#i-mic"/></svg><select id="micSelect" aria-label="Microphone"></select>
+      </label>
+      <label id="outPick" class="opt device-opt" title="Speaker" hidden>
+        <svg class="icon"><use href="#i-volume"/></svg><select id="outSelect" aria-label="Speaker"></select>
+      </label>
       <button id="speakerBtn" class="opt" type="button" role="menuitemcheckbox" aria-checked="true">
         <svg class="icon on-icon"><use href="#i-volume"/></svg><svg class="icon off-icon"><use href="#i-volume-x"/></svg><span>Sound</span><span class="switch"></span>
       </button>

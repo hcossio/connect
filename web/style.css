@@ -277,6 +277,17 @@ input:focus, textarea:focus { border-color: #fff; }
   font-size: 30px; font-weight: 700; color: var(--muted); background: var(--surface-2);
 }
 .tile.self video { transform: scaleX(-1); }
+.cam-cover { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px 16px 48px; text-align: center; }
+.cam-cover[hidden] { display: none; }
+.cc-initials {
+  display: grid; place-items: center; width: 84px; height: 84px; border-radius: 50%;
+  background: rgba(255,255,255,.08); color: var(--text, #fff); font-size: 30px;
+}
+.cc-note { max-width: 28ch; font-size: 13px; font-weight: 500; line-height: 1.35; }
+.cc-note:empty { display: none; }
+.stage[data-mode="screen"] .cam-cover { padding-bottom: 36px; gap: 6px; }
+.stage[data-mode="screen"] .cc-initials { width: 48px; height: 48px; font-size: 18px; }
+.stage[data-mode="screen"] .cc-note { font-size: 11px; }
 
 /* Everyone else's cameras: a grid filling the stage (one person fills it all),
    and a floating column while someone shares their screen. */

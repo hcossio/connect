@@ -214,7 +214,7 @@ for (const b of $$('.media-mic')) b.onclick = () => {
   if (t) t.enabled = !t.enabled; syncMediaButtons(); sendMe();
 };
 for (const b of $$('.media-cam')) b.onclick = () => {
-  const t = state.camStream.getVideoTracks()[0]; if (t) t.enabled = !t.enabled; syncMediaButtons();
+  const t = state.camStream.getVideoTracks()[0]; if (t) t.enabled = !t.enabled; syncMediaButtons(); sendMe();
 };
 for (const b of $$('.media-noise')) b.onclick = () => {
   noise.on = !noise.on;
@@ -843,9 +843,11 @@ function addPeer(id, name, initiator) {
       console.warn(err);
     } finally { p.makingOffer = false; }
   };
-  pc.ontrack = ({ streams }) => {
+  pc.ontrack = ({ track, streams }) => {
     const stream = streams[0];
     if (!stream) return;
+    // Their video stops arriving (a phone that went to another app): cover it rather than freeze.
+    if (track.kind === 'video') track.onmute = track.onunmute = track.onended = () => renderCamCover(p);
     p.streams.set(stream.id, stream);
     stream.onremovetrack = () => {
       if (!stream.getTracks().length) { p.streams.delete(stream.id); routeStreams(p); }
@@ -960,6 +962,7 @@ function routeStreams(p) {
   const v = p.tile.querySelector('video');
   if (v.srcObject !== p.cam) { v.srcObject = p.cam; playWhenAllowed(v); countPainted(p, v); }
   if (!blocked.has(v)) v.muted = state.soundOff; // unmuting a blocked video would pause it again
+  renderCamCover(p);
   updateStage();
 }
 

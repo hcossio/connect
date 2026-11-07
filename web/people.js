@@ -8,8 +8,10 @@ const REACTIONS = ['👍', '👏', '❤️', '😂', '😮', '🎉', '🙏', '�
 const me = { hand: false };
 
 const micOn = () => { const a = state.camStream.getAudioTracks()[0]; return !!a && a.enabled; };
+const camOn = () => { const v = state.camStream.getVideoTracks()[0]; return !!v && v.enabled; };
 function sendMe(id) {
-  const msg = { t: 'me', device: IS_PHONE ? 'phone' : 'desktop', mic: micOn(), hand: me.hand };
+  // away: this page is hidden, e.g. a phone switched to another app, which pauses its camera.
+  const msg = { t: 'me', device: IS_PHONE ? 'phone' : 'desktop', mic: micOn(), cam: camOn(), away: document.hidden, hand: me.hand };
   if (id == null) broadcast(msg); else sendTo(id, msg);
   renderSelf();
 }
@@ -18,6 +20,8 @@ function onMe(p, m) {
   p.device = m.device === 'phone' ? 'phone' : 'desktop';
   p.mic = m.mic !== false;
   p.hand = !!m.hand;
+  p.camOn = m.cam !== false;
+  p.away = !!m.away;
   renderPeer(p);
   if (p.hand && !hadHand) { toast(`${p.name} raised their hand`); ding(); }
 }
@@ -45,6 +49,7 @@ function nameTag(tag, name, device, muted) {
 }
 function renderPeer(p) {
   nameTag(p.tile.querySelector('.name-tag'), p.name, p.device, p.mic === false);
+  renderCamCover(p);
   const hand = p.tile.querySelector('.hand-tag');
   hand.hidden = !p.hand;
   hand.title = state.isHost ? `Lower ${p.name}'s hand` : `${p.name} raised their hand`;
@@ -66,6 +71,24 @@ function renderPeer(p) {
   };
   if (typeof renderFloor === 'function') renderFloor();
 }
+// Their initials over the tile instead of a black or frozen picture when their
+// camera is off, or paused because they switched to another app on a phone.
+// Phones don't let a web page use the camera in the background, so the best
+// we can do is say why and pick the picture up again when they're back.
+function renderCamCover(p) {
+  const cover = p.tile.querySelector('.cam-cover');
+  const video = p.cam?.getVideoTracks().find((t) => t.readyState === 'live');
+  const paused = p.away && p.device === 'phone';
+  const show = paused || p.camOn === false || (!!p.cam && (!video || video.muted));
+  cover.hidden = !show;
+  if (!show) return;
+  cover.querySelector('.cc-initials').textContent = initials(p.name);
+  cover.querySelector('.cc-note').textContent = paused ? 'In another app. Their camera is paused until they come back.'
+    : p.camOn === false ? 'Camera off' : !video ? 'No camera' : ''; // no picture yet, or it stalled
+}
+// Tell the others when this page goes to the background and comes back.
+document.addEventListener('visibilitychange', () => { if (peers.size) sendMe(); });
+
 function renderSelf() {
   nameTag($('selfTile').querySelector('.name-tag'), 'You', IS_PHONE ? 'phone' : 'desktop', !micOn());
   $('selfTile').querySelector('.hand-tag').hidden = !me.hand;

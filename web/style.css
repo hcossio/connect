@@ -783,15 +783,29 @@ button.link:hover { color: var(--muted); }
 .switch::after { content: ""; position: absolute; top: 3px; left: 19px; width: 18px; height: 18px; border-radius: 50%; background: #000; transition: left .15s, background .15s; }
 .opt.off .switch, #ccBtn:not(.active) .switch { background: #3a3a3a; }
 .opt.off .switch::after, #ccBtn:not(.active) .switch::after { left: 3px; background: #a3a3a3; }
-/* Microphone and speaker pickers: the whole row opens the device list. */
-.device-opt { position: relative; padding-right: 34px; }
-.device-opt select {
-  flex: 1; min-width: 0; appearance: none; -webkit-appearance: none; border: 0; padding: 0; margin: 0;
-  background: transparent; color: inherit; font: inherit; font-size: 15px; text-overflow: ellipsis; cursor: pointer; outline: none;
+/* Microphone and speaker pickers: the row shows the device in use and opens
+   its list right below it, inside the menu. */
+.settings-menu { max-height: calc(100dvh - 140px - var(--safe-b)); overflow-y: auto; overscroll-behavior: contain; }
+.device-pick { min-width: 0; }
+.device-opt { min-width: 0; }
+.device-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.device-opt::after { content: ""; flex: none; width: 7px; height: 7px; margin: -4px 4px 0 0; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); opacity: .6; transition: transform .15s, margin .15s; }
+.device-opt[aria-expanded="true"] { background: rgba(255,255,255,.08); }
+.device-opt[aria-expanded="true"]::after { transform: rotate(-135deg); margin-top: 4px; }
+.device-list { display: grid; gap: 2px; margin: 2px 0 6px; padding: 4px; border-radius: 14px; background: rgba(255,255,255,.05); }
+.device-list[hidden] { display: none; }
+.device-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 10px 12px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--muted); font: inherit; font-size: 14px; text-align: left; cursor: pointer;
 }
-.device-opt select option { background: #161616; color: #fff; }
-.device-opt::after { content: ""; position: absolute; right: 16px; top: 50%; width: 7px; height: 7px; margin-top: -6px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); opacity: .6; pointer-events: none; }
-.device-opt:focus-within { background: rgba(255,255,255,.08); }
+.device-item:hover { background: rgba(255,255,255,.08); color: #fff; }
+.device-item .icon { flex: none; width: 16px; height: 16px; visibility: hidden; }
+.device-item[aria-selected="true"] { color: #fff; }
+.device-item[aria-selected="true"] .icon { visibility: visible; }
+/* Long names wrap (up to three lines) so devices with similar names can be told apart. */
+.device-item span { min-width: 0; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-height: 1.3; }
+.device-item small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+@media (pointer: coarse) { .device-item { padding: 12px; font-size: 15px; } }
 /* The gear shows a dot while the call's sound is off on this device. */
 #settingsBtn.muted::after { content: ""; position: absolute; top: 4px; right: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px #000; }
 @media (max-width: 640px) {

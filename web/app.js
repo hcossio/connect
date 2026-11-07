@@ -230,6 +230,7 @@ for (const b of $$('.media-noise')) b.onclick = () => {
 // next tap.
 const blocked = new Set();
 function playWhenAllowed(v) {
+  toSpeaker(v).catch(() => {});
   const start = () => v.play?.()?.catch(() => {
     if (v.muted) return;
     v.muted = true;
@@ -249,9 +250,10 @@ addEventListener('pointerdown', () => {
   }
 }, true);
 
-// ---------- Settings menu: sound, noise filter, captions ----------
+// ---------- Settings menu: mic, speaker, sound, noise filter, captions ----------
 function setSettingsOpen(open) {
   $('settingsMenu').hidden = !open;
+  if (open) listDevices();
   $('settingsBtn').classList.toggle('active', open);
   $('settingsBtn').setAttribute('aria-expanded', String(open));
 }
@@ -321,6 +323,107 @@ function stopNoise() {
   noise.ctx?.close().catch(() => {});
   noise.node = null;
 }
+
+// ---------- Microphone and speaker (settings menu) ----------
+// The choice is remembered on this device. Switching the mic mid-call swaps
+// the noise filter's input (or the sent track itself when there's no filter),
+// so the others keep hearing us without anything renegotiating. The speaker
+// uses setSinkId, which Safari on iPhone and iPad doesn't have: there the
+// phone decides, and the speaker row stays hidden.
+const devices = { mic: '', out: '' };
+try {
+  devices.mic = localStorage.getItem('devassist:mic') || '';
+  devices.out = localStorage.getItem('devassist:out') || '';
+} catch {}
+const CAN_PICK_OUTPUT = 'setSinkId' in HTMLMediaElement.prototype;
+const micConstraints = () => (devices.mic ? { ...AUDIO, deviceId: { ideal: devices.mic } } : AUDIO);
+const rawMic = () => (noise.node ? noise.raw : state.camStream?.getAudioTracks()[0]);
+
+function fillDevices(sel, list, word, chosen) {
+  const opts = list.map((d, i) => new Option(d.label || `${word} ${i + 1}`, d.deviceId));
+  sel.replaceChildren(...opts);
+  const ids = list.map((d) => d.deviceId);
+  const pick = chosen.find((id) => ids.includes(id));
+  if (pick) sel.value = pick;
+}
+async function listDevices() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+  const all = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  const mics = all.filter((d) => d.kind === 'audioinput' && d.deviceId);
+  const outs = CAN_PICK_OUTPUT ? all.filter((d) => d.kind === 'audiooutput' && d.deviceId) : [];
+  // Only while there's a mic to swap: without one, adding it would need a new offer.
+  $('micPick').hidden = !mics.length || !rawMic();
+  $('outPick').hidden = !outs.length;
+  fillDevices($('micSelect'), mics, 'Microphone', [rawMic()?.getSettings?.().deviceId, devices.mic, 'default']);
+  fillDevices($('outSelect'), outs, 'Speaker', [devices.out, 'default']);
+}
+
+async function useMic(id) {
+  const sent = state.camStream.getAudioTracks()[0];
+  const old = rawMic();
+  if (!sent || old?.getSettings?.().deviceId === id) return;
+  let fresh;
+  try {
+    fresh = (await navigator.mediaDevices.getUserMedia({ audio: { ...AUDIO, deviceId: { exact: id } } })).getAudioTracks()[0];
+  } catch (err) {
+    console.warn('Could not switch the mic', err);
+    toast('That microphone can\'t be used right now', 3000);
+    return listDevices();
+  }
+  devices.mic = id;
+  try { localStorage.setItem('devassist:mic', id); } catch {}
+  if (noise.node) {
+    noise.src.disconnect();
+    noise.raw = fresh;
+    noise.src = noise.ctx.createMediaStreamSource(new MediaStream([fresh]));
+    routeMic();
+  } else {
+    fresh.enabled = sent.enabled; // stay muted if we were
+    state.camStream.removeTrack(sent);
+    state.camStream.addTrack(fresh);
+    for (const p of peers.values()) for (const s of p.pc.getSenders()) if (s.track === sent) s.replaceTrack(fresh);
+    // Captions listen to the sent track, so point them at the new one.
+    if (tx.mic) { closeSource(tx.mic); tx.mic = null; startCapture(); }
+  }
+  old?.stop();
+  syncMediaButtons();
+  listDevices();
+  toast(`Microphone: ${$('micSelect').selectedOptions[0]?.textContent || 'changed'}`, 2000);
+}
+
+// Sends one element (or audio context) to the chosen speaker.
+function toSpeaker(el) {
+  if (!devices.out || !el?.setSinkId || el.sinkId === devices.out) return Promise.resolve();
+  return el.setSinkId(devices.out);
+}
+async function useOutput(id) {
+  const prev = devices.out;
+  devices.out = id;
+  try {
+    const els = [...document.querySelectorAll('video, audio')];
+    try {
+      await Promise.all(els.map(toSpeaker));
+    } catch (err) {
+      // Firefox only plays to a speaker the person picked in its own prompt.
+      if (err?.name !== 'NotAllowedError' || !navigator.mediaDevices.selectAudioOutput) throw err;
+      await navigator.mediaDevices.selectAudioOutput({ deviceId: id });
+      await Promise.all(els.map(toSpeaker));
+    }
+    toSpeaker(noise.ctx || ding.ctx).catch(() => {}); // the knock chime
+    try { localStorage.setItem('devassist:out', id); } catch {}
+    toast(`Speaker: ${$('outSelect').selectedOptions[0]?.textContent || 'changed'}`, 2000);
+  } catch (err) {
+    console.warn('Could not switch the speaker', err);
+    devices.out = prev;
+    toast('That speaker can\'t be used right now', 3000);
+  }
+  listDevices();
+}
+$('micSelect').onchange = () => useMic($('micSelect').value);
+$('outSelect').onchange = () => useOutput($('outSelect').value);
+// Plugging in a headset adds it to the lists; unplugging the mic in use falls
+// back to the default one.
+navigator.mediaDevices?.addEventListener?.('devicechange', () => { listDevices(); restartMedia(); });
 
 // ---------- Movable camera tiles ----------
 // Floating tiles (your camera, and the strip of everyone's cameras during a
@@ -612,7 +715,7 @@ async function restartMedia() {
   const raw = noise.node ? noise.raw : sent;
   if (raw?.readyState === 'ended') {
     try {
-      const fresh = (await navigator.mediaDevices.getUserMedia({ audio: AUDIO })).getAudioTracks()[0];
+      const fresh = (await navigator.mediaDevices.getUserMedia({ audio: micConstraints() })).getAudioTracks()[0];
       if (noise.node) {
         noise.src.disconnect();
         noise.raw = fresh;
@@ -683,10 +786,10 @@ const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl:
 const previewReady = (async function startPreview() {
   let stream = new MediaStream();
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO, video: true });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(), video: true });
   } catch {
     // Fall back to whatever is available; joining works with neither.
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO }); } catch {}
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints() }); } catch {}
   }
   state.camStream = stream;
   $('previewVideo').srcObject = stream;
@@ -769,6 +872,7 @@ function showKnock(id, name) {
 function ding() {
   try {
     const ctx = noise.ctx || (ding.ctx ||= new AudioContext());
+    toSpeaker(ctx).catch(() => {});
     const o = ctx.createOscillator(), g = ctx.createGain();
     o.frequency.value = 880;
     g.gain.setValueAtTime(0.0001, ctx.currentTime);

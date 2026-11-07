@@ -253,7 +253,7 @@ addEventListener('pointerdown', () => {
 // ---------- Settings menu: mic, speaker, sound, noise filter, captions ----------
 function setSettingsOpen(open) {
   $('settingsMenu').hidden = !open;
-  if (open) listDevices();
+  if (open) listDevices(); else openDeviceList(null);
   $('settingsBtn').classList.toggle('active', open);
   $('settingsBtn').setAttribute('aria-expanded', String(open));
 }
@@ -339,12 +339,47 @@ const CAN_PICK_OUTPUT = 'setSinkId' in HTMLMediaElement.prototype;
 const micConstraints = () => (devices.mic ? { ...AUDIO, deviceId: { ideal: devices.mic } } : AUDIO);
 const rawMic = () => (noise.node ? noise.raw : state.camStream?.getAudioTracks()[0]);
 
-function fillDevices(sel, list, word, chosen) {
-  const opts = list.map((d, i) => new Option(d.label || `${word} ${i + 1}`, d.deviceId));
-  sel.replaceChildren(...opts);
+// Chrome lists the system default as its own entry ("Default - MacBook Pro
+// Speakers"): it's shown as "System default" with the device underneath.
+function deviceLabel(d, i, word) {
+  const label = d.label || `${word} ${i + 1}`;
+  const m = d.deviceId === 'default' && /^Default\s*-\s*(.+)$/.exec(label);
+  return m ? { name: 'System default', sub: m[1] } : { name: label, sub: '' };
+}
+function fillDevices(pick, list, word, chosen, onPick) {
   const ids = list.map((d) => d.deviceId);
-  const pick = chosen.find((id) => ids.includes(id));
-  if (pick) sel.value = pick;
+  const current = chosen.find((id) => ids.includes(id)) || ids[0];
+  const items = list.map((d, i) => {
+    const { name, sub } = deviceLabel(d, i, word);
+    const b = Object.assign(document.createElement('button'), { type: 'button', className: 'device-item' });
+    b.setAttribute('role', 'option');
+    b.setAttribute('aria-selected', String(d.deviceId === current));
+    b.innerHTML = '<svg class="icon"><use href="#i-check"/></svg>';
+    const text = document.createElement('span');
+    text.textContent = name;
+    if (sub) text.append(Object.assign(document.createElement('small'), { textContent: sub }));
+    b.append(text);
+    b.title = sub ? `${name}: ${sub}` : name;
+    b.onclick = () => { openDeviceList(null); if (d.deviceId !== current) onPick(d.deviceId, sub || name); };
+    if (d.deviceId === current) {
+      pick.querySelector('.device-name').textContent = sub || name;
+      pick.querySelector('.device-opt').title = `${word}: ${sub || name}`;
+    }
+    return b;
+  });
+  pick.querySelector('.device-list').replaceChildren(...items);
+}
+// One list open at a time; null closes both.
+function openDeviceList(pick) {
+  for (const p of $$('.device-pick')) {
+    const open = p === pick;
+    p.querySelector('.device-list').hidden = !open;
+    p.querySelector('.device-opt').setAttribute('aria-expanded', String(open));
+  }
+  pick?.querySelector('.device-list').scrollIntoView({ block: 'nearest' });
+}
+for (const p of $$('.device-pick')) {
+  p.querySelector('.device-opt').onclick = () => openDeviceList(p.querySelector('.device-list').hidden ? p : null);
 }
 async function listDevices() {
   if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -354,11 +389,11 @@ async function listDevices() {
   // Only while there's a mic to swap: without one, adding it would need a new offer.
   $('micPick').hidden = !mics.length || !rawMic();
   $('outPick').hidden = !outs.length;
-  fillDevices($('micSelect'), mics, 'Microphone', [rawMic()?.getSettings?.().deviceId, devices.mic, 'default']);
-  fillDevices($('outSelect'), outs, 'Speaker', [devices.out, 'default']);
+  fillDevices($('micPick'), mics, 'Microphone', [rawMic()?.getSettings?.().deviceId, devices.mic, 'default'], useMic);
+  fillDevices($('outPick'), outs, 'Speaker', [devices.out, 'default'], useOutput);
 }
 
-async function useMic(id) {
+async function useMic(id, name) {
   const sent = state.camStream.getAudioTracks()[0];
   const old = rawMic();
   if (!sent || old?.getSettings?.().deviceId === id) return;
@@ -388,7 +423,7 @@ async function useMic(id) {
   old?.stop();
   syncMediaButtons();
   listDevices();
-  toast(`Microphone: ${$('micSelect').selectedOptions[0]?.textContent || 'changed'}`, 2000);
+  toast(`Microphone: ${name}`, 2000);
 }
 
 // Sends one element (or audio context) to the chosen speaker.
@@ -396,7 +431,7 @@ function toSpeaker(el) {
   if (!devices.out || !el?.setSinkId || el.sinkId === devices.out) return Promise.resolve();
   return el.setSinkId(devices.out);
 }
-async function useOutput(id) {
+async function useOutput(id, name) {
   const prev = devices.out;
   devices.out = id;
   try {
@@ -411,7 +446,7 @@ async function useOutput(id) {
     }
     toSpeaker(noise.ctx || ding.ctx).catch(() => {}); // the knock chime
     try { localStorage.setItem('devassist:out', id); } catch {}
-    toast(`Speaker: ${$('outSelect').selectedOptions[0]?.textContent || 'changed'}`, 2000);
+    toast(`Speaker: ${name}`, 2000);
   } catch (err) {
     console.warn('Could not switch the speaker', err);
     devices.out = prev;
@@ -419,8 +454,6 @@ async function useOutput(id) {
   }
   listDevices();
 }
-$('micSelect').onchange = () => useMic($('micSelect').value);
-$('outSelect').onchange = () => useOutput($('outSelect').value);
 // Plugging in a headset adds it to the lists; unplugging the mic in use falls
 // back to the default one.
 navigator.mediaDevices?.addEventListener?.('devicechange', () => { listDevices(); restartMedia(); });

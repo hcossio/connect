@@ -997,6 +997,12 @@ async function onSignal(msg) {
     case 'denied':
       endSession('denied');
       break;
+    case 'removed':
+      endSession('removed', msg.by);
+      break;
+    case 'locked':
+      onLocked(msg);
+      break;
     case 'knock':
       showKnock(msg.id, msg.name);
       break;
@@ -1016,6 +1022,7 @@ async function onSignal(msg) {
       state.joinedAt ||= Date.now();
       state.isHost = !!msg.host;
       state.hostId = msg.hostId;
+      state.locked = !!msg.locked;
       $('myColor').style.setProperty('--c', colorOf(msg.id));
       $('browserBtn').hidden = !msg.browser;
       if (msg.ice?.length) state.iceServers = msg.ice;
@@ -1040,7 +1047,7 @@ async function onSignal(msg) {
       break;
     case 'peer-left':
       removePeer(msg.id);
-      toast(`${msg.name} left`);
+      toast(msg.removedBy ? `${msg.removedBy} removed ${msg.name}` : `${msg.name} left`);
       break;
     case 'host':
       // Whoever started the session left; the "still there?" check is ours now.
@@ -1243,6 +1250,7 @@ const END_REASONS = {
   left: (by) => `${by || 'The other person'} left or closed their window.`,
   lost: () => 'The connection to the server was lost.',
   denied: () => 'The host didn\'t let you in.',
+  removed: (by) => `${by || 'The host'} removed you from the call.`,
 };
 // "38 minutes with Maria", for the screen after the call.
 function callStats() {
@@ -1255,11 +1263,11 @@ function callStats() {
 }
 function endSession(reason, by) {
   teardown();
-  $('endedTitle').textContent = reason === 'denied' ? 'You weren\'t let in.' : reason === 'self' || reason === 'left' ? 'That’s a wrap.' : 'Call ended.';
+  $('endedTitle').textContent = reason === 'denied' ? 'You weren\'t let in.' : reason === 'removed' ? 'You were removed.' : reason === 'self' || reason === 'left' ? 'That’s a wrap.' : 'Call ended.';
   $('endedStats').textContent = callStats();
   $('endedStats').hidden = !$('endedStats').textContent;
   $('endedReason').textContent = (END_REASONS[reason] || END_REASONS.left)(by);
-  $('rejoinBtn').hidden = reason === 'timeout' || reason === 'denied';
+  $('rejoinBtn').hidden = reason === 'timeout' || reason === 'denied' || reason === 'removed';
   $('call').hidden = true;
   $('ended').hidden = false;
 }

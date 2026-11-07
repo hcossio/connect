@@ -113,7 +113,7 @@ function updateStage() {
     p.tile.title = p.screen && p !== focus ? `Show ${p.name}'s screen` : '';
   }
   $('screenChip').hidden = !focus;
-  if (focus) $('screenChip').textContent = focus === self ? 'Your screen' : `${focus.name}'s screen`;
+  if (focus) $('screenChip').textContent = `${focus === self ? 'Your screen' : `${focus.name}'s screen`}${focus.screen?.getAudioTracks().length ? ' · with sound' : ''}`;
   $('splitBtn').hidden = !focus || sharers.length < 2;
   $('splitBtn').querySelector('span').textContent = `Show all ${sharers.length} screens`;
   // Control follows the screen on the stage.
@@ -264,7 +264,7 @@ addEventListener('keydown', (e) => { if (e.key === 'Escape') setSettingsOpen(fal
 state.soundOff = false;
 $('speakerBtn').onclick = () => {
   state.soundOff = !state.soundOff;
-  for (const v of $$('#grid video, #remoteScreen')) v.muted = state.soundOff;
+  for (const v of $$('#grid video, #grid audio')) v.muted = state.soundOff;
   $('speakerBtn').classList.toggle('off', state.soundOff);
   $('speakerBtn').setAttribute('aria-checked', String(!state.soundOff));
   $('settingsBtn').classList.toggle('muted', state.soundOff);
@@ -960,6 +960,15 @@ function routeStreams(p) {
   const v = p.tile.querySelector('video');
   if (v.srcObject !== p.cam) { v.srcObject = p.cam; playWhenAllowed(v); countPainted(p, v); }
   if (!blocked.has(v)) v.muted = state.soundOff; // unmuting a blocked video would pause it again
+  // The sound they share with their screen plays whichever screen is on the
+  // stage (or none, while the whiteboard is up); the screen videos stay muted.
+  const sound = p.screen?.getAudioTracks().length ? p.screen : null;
+  if (sound && !p.screenAudio) p.screenAudio = p.tile.appendChild(document.createElement('audio'));
+  const a = p.screenAudio;
+  if (a && a.srcObject !== sound) {
+    a.srcObject = sound;
+    if (sound) { if (!blocked.has(a)) a.muted = state.soundOff; playWhenAllowed(a); }
+  }
   updateStage();
 }
 
@@ -1172,18 +1181,39 @@ $('shareBtn').onclick = async () => {
   if (state.screenStream) return stopShare();
   try {
     // Share the entire screen if you want to be controlled: clicks map onto it.
-    state.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 15 }, audio: false });
+    state.screenStream = await shareScreen();
   } catch { return; }
   const [track] = state.screenStream.getVideoTracks();
   track.contentHint = 'detail'; // favour sharp text over smooth motion
   track.onended = stopShare;
+  const sound = state.screenStream.getAudioTracks()[0];
+  if (sound) sound.contentHint = 'music'; // a video or song, not a voice: don't treat it like speech
   broadcast({ t: 'screen-on', streamId: state.screenStream.id });
-  for (const p of peers.values()) p.pc.addTrack(track, state.screenStream);
+  for (const p of peers.values()) for (const t of state.screenStream.getTracks()) p.pc.addTrack(t, state.screenStream);
   $('shareBtn').classList.add('active');
   $('shareBtn').querySelector('.label').textContent = 'Stop';
-  toast('You are sharing your screen');
+  toast(sound ? 'You are sharing your screen and its sound' : 'You are sharing your screen');
   syncPointers();
 };
+// The browser's picker offers "Also share tab audio" for a tab (and, in
+// Chrome/Edge, "Also share system audio" for the entire screen), so people
+// choose there whether the others hear it. The sound of this call itself is
+// kept out where the browser can (restrictOwnAudio, Chrome 141+), and this tab
+// can't be picked, so the others don't hear themselves back.
+async function shareScreen() {
+  const video = { frameRate: 15 };
+  try {
+    return await navigator.mediaDevices.getDisplayMedia({
+      video,
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true, suppressLocalAudioPlayback: false },
+      systemAudio: 'include', selfBrowserSurface: 'exclude', surfaceSwitching: 'include',
+    });
+  } catch (err) {
+    // Browsers that can't share sound at all may refuse the request rather than ignore it.
+    if (err?.name !== 'TypeError' && err?.name !== 'NotSupportedError') throw err;
+    return navigator.mediaDevices.getDisplayMedia({ video, audio: false });
+  }
+}
 function stopShare() {
   if (!state.screenStream) return;
   const ids = new Set(state.screenStream.getTracks().map((t) => t.id));
@@ -1659,7 +1689,7 @@ async function startRecording(p) {
   // Mix their voice and ours into one track.
   const ctx = new AudioContext();
   const dest = ctx.createMediaStreamDestination();
-  for (const t of [...(p.cam?.getAudioTracks() || []), ...state.camStream.getAudioTracks()]) ctx.createMediaStreamSource(new MediaStream([t])).connect(dest);
+  for (const t of [...(p.cam?.getAudioTracks() || []), ...p.screen.getAudioTracks(), ...state.camStream.getAudioTracks()]) ctx.createMediaStreamSource(new MediaStream([t])).connect(dest);
   rec.ctx = ctx;
   const mr = new MediaRecorder(new MediaStream([...p.screen.getVideoTracks(), ...dest.stream.getAudioTracks()]), { mimeType: mime, videoBitsPerSecond: 1_500_000 });
   const { id, key } = rec;

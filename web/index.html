@@ -205,6 +205,27 @@
             <button id="abNextBtn" class="ab-btn" type="button" title="Next point"><svg class="icon sm"><use href="#i-next"/></svg></button>
           </span>
         </div>
+        <div id="floorBar" class="floor-bar" hidden aria-live="polite">
+          <span id="fbIcon" class="fb-icon"></span>
+          <div class="fb-text"><b id="fbMain"></b><span id="fbSub" class="fb-sub"></span></div>
+          <span id="fbClock" class="fb-clock"></span>
+          <span class="fb-btns">
+            <button id="fbHand" class="ab-btn fb-wide" type="button"><svg class="icon sm"><use href="#i-hand"/></svg><span>Raise hand</span></button>
+            <button id="fbDone" class="ab-btn fb-wide fb-go" type="button"><svg class="icon sm"><use href="#i-mic"/></svg><span>I'm done</span></button>
+            <button id="fbNow" class="ab-btn" type="button" title="Now">Now</button>
+            <button id="fbTake" class="ab-btn" type="button" title="Take the mic yourself"><svg class="icon sm"><use href="#i-mic"/></svg></button>
+            <button id="fbOff" class="ab-btn" type="button" title="Turn it off"><svg class="icon sm"><use href="#i-x"/></svg></button>
+          </span>
+        </div>
+        <div id="floorPop" class="floor-pop" hidden aria-live="assertive">
+          <div class="fp-card">
+            <span id="fpEmoji" class="fp-emoji"></span>
+            <span id="fpTitle" class="fp-title"></span>
+            <span id="fpNum" class="fp-num"></span>
+            <span id="fpSub" class="fp-sub"></span>
+            <button id="fpHand" class="btn" type="button" hidden><svg class="icon sm"><use href="#i-hand"/></svg><span>Raise my hand</span></button>
+          </div>
+        </div>
         <div id="controllingBanner" class="banner" hidden>
           <svg class="icon sm"><use href="#i-pointer"/></svg>
           <span>You're controlling <b class="peer-name"></b>'s computer</span>
@@ -336,6 +357,12 @@
       <button id="agendaBtn" class="opt" type="button" role="menuitemcheckbox" title="Run the meeting point by point, with a countdown for each">
         <svg class="icon"><use href="#i-list"/></svg><span>Agenda</span><span class="switch"></span>
       </button>
+      <button id="lineBtn" class="opt" type="button" role="menuitemcheckbox" title="Raise a hand to speak: after a 30 second countdown, everyone else is muted once" hidden>
+        <svg class="icon"><use href="#i-hand"/></svg><span>Wait in line</span><span class="switch"></span>
+      </button>
+      <button id="micModeBtn" class="opt" type="button" role="menuitemcheckbox" title="Only the person holding the mic can talk; it goes down the line of raised hands" hidden>
+        <svg class="icon"><use href="#i-mic"/></svg><span>Pass the mic</span><span class="switch"></span>
+      </button>
       <button id="browserBtn" class="opt" type="button" role="menuitemcheckbox" title="Open a browser everyone in the call can see and use" hidden>
         <svg class="icon"><use href="#i-globe"/></svg><span>Shared browser</span><span class="switch"></span>
       </button>
@@ -442,12 +469,14 @@
   <script src="/board.js"></script>
   <script src="/people.js"></script>
   <script src="/agenda.js"></script>
+  <script src="/floor.js"></script>
   <template id="peerTileTpl">
     <div class="tile peer">
       <video autoplay playsinline></video>
       <span class="name-tag"></span>
       <span class="share-tag" hidden>Sharing</span>
       <button class="hand-tag" type="button" hidden><svg class="icon sm"><use href="#i-hand"/></svg></button>
+      <button class="tile-btn give-btn" type="button" title="Give the mic" hidden><svg class="icon sm"><use href="#i-mic"/></svg></button>
       <button class="tile-btn mute-btn" type="button" title="Mute" hidden><svg class="icon sm"><use href="#i-mic-off"/></svg></button>
       <button class="tile-btn pop-btn" type="button" title="Pop out the cameras so they float over other windows" hidden><svg class="icon sm"><use href="#i-popout"/></svg></button>
     </div>

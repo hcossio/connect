@@ -97,6 +97,14 @@ When a meeting link is pasted into WhatsApp, iMessage, Slack and other apps, its
 
 Chat messages are bubbles with the time and a copy button. The chat starts closed; new messages float over the call, and tapping one opens it. You can attach, drop or paste files up to `MAX_FILE_MB` (default 25 MB). They're stored on the server only while the meeting is open, deleted when it ends, and only people in that meeting can download them. Images show a preview.
 
+### Transcribing a WhatsApp (or other) call on your computer
+
+In the **Transcript** tab, the meeting starter can press **Transcribe a call on this computer** to transcribe a call they take in another app, such as WhatsApp on a Mac. Start a Connect session on your own, press the button, type who you're talking to, then in Chrome's picker choose **Entire screen** and turn on **Also share system audio**. Connect keeps only the sound (nothing is shown or sent to others): the computer's sound is transcribed under the caller's name and your mic under yours, and the transcript saves, summarizes and exports like any meeting. **Stop transcribing** (or Chrome's "Stop sharing") ends it.
+
+- Needs Chrome 141 or newer on macOS 14.2 or newer (Chrome or Edge on Windows). Firefox and Safari can't share system audio.
+- It hears everything the computer plays, so mute other sounds. Use headphones, or your mic also picks up the caller and their words are written twice.
+- Tell the other person the call is being transcribed. Many places require everyone's consent to record a call, and with the xAI engine their voice goes to xAI; **On device** keeps it on your computer.
+
 ## Saved transcripts
 
 The transcript saves itself: each line is sent to the server as soon as it's transcribed and kept with the meeting, so nothing is lost if nobody presses Save, someone's browser closes, or the host leaves early. Transcripts are listed on the admin page, and the summary is written when the meeting ends. **Save** in the Transcript tab is still there for the host; it adds any lines the server missed and writes the summary right away.

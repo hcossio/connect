@@ -207,7 +207,9 @@ function dropFiles(room) {
 // the host's browser closes. The summary is written when the meeting ends.
 const summaryTimers = new Map();
 const MAX_LINES = 5000;
-function addTranscriptLine(ws, text, at) {
+// speaker: the meeting starter can send lines under another name, for a call
+// they take on their computer (its sound is transcribed under the caller's name).
+function addTranscriptLine(ws, text, at, speaker) {
   const m = ws.room.meeting;
   text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 2000);
   if (!text) return;
@@ -219,7 +221,8 @@ function addTranscriptLine(ws, text, at) {
   if (lines.length >= MAX_LINES) return;
   let i = lines.length;
   while (i > 0 && lines[i - 1].at > at) i--;
-  lines.splice(i, 0, { name: ws.displayName, text, at });
+  const caller = ws.room.host === ws && typeof speaker === 'string' && speaker.replace(/\s+/g, ' ').trim().slice(0, 40);
+  lines.splice(i, 0, { name: caller || ws.displayName, text, at });
   m.transcript.savedAt = now;
   store.save();
 }
@@ -626,7 +629,7 @@ wss.on('connection', (ws, req) => {
 
     // One line of the transcript, from the person who said it.
     if (msg.type === 'tx-line') {
-      addTranscriptLine(ws, msg.text, msg.at);
+      addTranscriptLine(ws, msg.text, msg.at, msg.speaker);
       return;
     }
 

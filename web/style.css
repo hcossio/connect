@@ -486,7 +486,8 @@ input:focus, textarea:focus { border-color: #fff; }
 .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: blink 1.6s infinite; }
 @keyframes blink { 50% { opacity: .35; } }
 .chat.show-transcript .messages#messages, .chat.show-transcript .composer, .chat.show-transcript #chatHint { display: none; }
-.transcript { grid-row: 2 / 4; display: grid; grid-template-rows: auto auto auto 1fr auto; min-height: 0; }
+.transcript { grid-row: 2 / 4; display: flex; flex-direction: column; min-height: 0; }
+.transcript > .messages { flex: 1; min-height: 0; }
 .tx-bar { display: flex; align-items: center; gap: 8px; padding: 12px 20px 0; }
 .tx-note { margin: 0; padding: 8px 20px 0; }
 .transcript:not(.is-host) .host-only { display: none; }

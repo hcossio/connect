@@ -285,6 +285,9 @@
             </select>
           </div>
           <p id="txNote" class="muted small tx-note host-only"></p>
+          <div class="tx-bar host-only">
+            <button id="txCallBtn" class="btn sm" type="button" title="Transcribe a WhatsApp or other call you take on this computer">Transcribe a call on this computer</button>
+          </div>
           <div id="transcriptLines" class="messages">
             <p class="muted small center">Everyone's words show up here with their name once the meeting starter turns the transcript on. The meeting starter can save it with the meeting, and anyone can download it.</p>
           </div>
@@ -431,6 +434,16 @@
       <option value="es">Español</option>
     </select>
     <menu><button id="askNo" class="btn" type="button">Not now</button><button id="askYes" class="btn primary" type="button">Start</button></menu>
+  </dialog>
+
+  <dialog id="callAudioDialog" class="ask">
+    <span class="ask-icon"><svg class="icon"><use href="#i-cc"/></svg></span>
+    <h2>Transcribe a call on this computer</h2>
+    <p class="muted">For a WhatsApp or other call you take here. Chrome will ask what to share: pick <b>Entire screen</b> and turn on <b>Also share system audio</b>. Only the sound is used. Wear headphones so the caller isn't written down twice, and let them know you're transcribing the call.</p>
+    <form id="callForm">
+      <input id="callName" class="ask-select" placeholder="Who are you talking to?" aria-label="Caller's name" maxlength="40" autocomplete="off">
+      <menu><button id="callCancel" class="btn" type="button">Cancel</button><button class="btn primary" type="submit">Choose screen</button></menu>
+    </form>
   </dialog>
 
   <dialog id="helperDialog">

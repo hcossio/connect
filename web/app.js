@@ -1046,6 +1046,7 @@ async function onSignal(msg) {
       // Whoever started the session left; the "still there?" check is ours now.
       state.hostId = msg.id;
       state.isHost = msg.id === state.myId;
+      if (!state.isHost) stopCallAudio();
       if (msg.canRunAgenda != null) onAgenda(null, msg.canRunAgenda);
       syncTranscriptUI();
       syncHostUI();
@@ -1149,7 +1150,13 @@ function onData(p, m) {
     case 'pointer': onPointer(p, m); break;
     case 'bpointer': p.bpointer = m.off ? null : { x: +m.x, y: +m.y, driver: !!m.driver }; drawBrowserPointer(p); break;
     case 'transcribe': if (p.id === state.hostId) onTranscribe(p, m); break;
-    case 'line': if (typeof m.text === 'string') addLine(p.name, m.text.slice(0, 2000), Number(m.at) || Date.now(), false, p.id); break;
+    case 'line': {
+      if (typeof m.text !== 'string') break;
+      // The meeting starter's call audio comes in under the caller's name.
+      const caller = p.id === state.hostId && typeof m.speaker === 'string' && m.speaker.trim().slice(0, 40);
+      addLine(caller || p.name, m.text.slice(0, 2000), Number(m.at) || Date.now(), false, caller ? `${p.id}:call` : p.id);
+      break;
+    }
     case 'ann': onAnn(p, m); break;
     case 'board': if (p.id === state.hostId) onBoard(m); break;
     case 'reset': onReset(p); break;
@@ -1231,6 +1238,7 @@ function teardown() {
   state.ws?.close();
   for (const id of [...peers.keys()]) removePeer(id);
   state.camStream.getTracks().forEach((t) => t.stop());
+  stopCallAudio();
   stopCapture();
   stopNoise();
   pip?.close();
@@ -2254,6 +2262,9 @@ const tx = {
   queue: Promise.resolve(), pending: 0,
   worker: null, jobs: new Map(), nextJob: 1,
   lines: [], // { name, text, at, mine }
+  mic: null,  // my own mic, cut into clips at pauses
+  call: null, // this computer's sound (a WhatsApp or phone call), transcribed under the caller's name
+  callStream: null, callName: '',
 };
 // The meeting starter's own choices, remembered for their next meeting.
 try {
@@ -2283,6 +2294,8 @@ function syncTranscriptUI() {
   $('txToggle').textContent = tx.on ? 'Stop transcript' : 'Start transcript';
   $('txToggle').classList.toggle('primary', !tx.on);
   $('txDot').hidden = !tx.on;
+  $('txCallBtn').textContent = tx.callStream ? `Stop transcribing ${tx.callName}` : 'Transcribe a call on this computer';
+  $('txCallBtn').classList.toggle('active', !!tx.callStream);
   $('ccBtn').classList.toggle('active', state.captions);
   $('ccBtn').setAttribute('aria-checked', String(state.captions));
   $('ccBtn').title = tx.on ? '' : 'Captions show while the transcript is on';
@@ -2356,22 +2369,32 @@ function setTranscribing(on, by, already = false) {
   syncTranscriptUI();
 }
 
+// One audio track cut into clips at pauses. speaker: null for my own mic, or
+// the name the clips are transcribed under (the caller, for call audio).
+async function openSource(track, speaker) {
+  const ctx = new AudioContext();
+  await ctx.audioWorklet.addModule('/capture-worklet.js');
+  const s = { ctx, speaker, pre: [], clip: null };
+  const src = ctx.createMediaStreamSource(new MediaStream([track]));
+  const node = new AudioWorkletNode(ctx, 'capture');
+  node.port.onmessage = (e) => onSpeechFrame(s, e.data);
+  // Silent route to the speakers so the browser keeps pulling audio through.
+  const mute = ctx.createGain();
+  mute.gain.value = 0;
+  src.connect(node).connect(mute).connect(ctx.destination);
+  ctx.resume().catch(() => {});
+  return s;
+}
+const closeSource = (s) => s?.ctx.close().catch(() => {});
+
 async function startCapture() {
+  startCallSource();
   const track = state.camStream.getAudioTracks()[0];
   if (!track) return txStatus('No microphone here, so only the others are transcribed.');
   try {
-    const ctx = new AudioContext();
-    await ctx.audioWorklet.addModule('/capture-worklet.js');
-    if (!tx.on) return ctx.close(); // stopped while loading
-    tx.ctx = ctx;
-    tx.src = ctx.createMediaStreamSource(new MediaStream([track]));
-    tx.node = new AudioWorkletNode(ctx, 'capture');
-    tx.node.port.onmessage = (e) => onSpeechFrame(e.data);
-    // Silent route to the speakers so the browser keeps pulling audio through.
-    const mute = ctx.createGain();
-    mute.gain.value = 0;
-    tx.src.connect(tx.node).connect(mute).connect(ctx.destination);
-    ctx.resume().catch(() => {});
+    const s = await openSource(track, null);
+    if (!tx.on || tx.mic) return closeSource(s); // stopped (or started again) while loading
+    tx.mic = s;
     txStatus('');
   } catch (err) {
     console.warn(err);
@@ -2379,38 +2402,104 @@ async function startCapture() {
   }
 }
 function stopCapture() {
-  tx.ctx?.close().catch(() => {});
-  Object.assign(tx, { ctx: null, src: null, node: null, pre: [], clip: null });
+  closeSource(tx.mic);
+  closeSource(tx.call);
+  tx.mic = tx.call = null;
 }
-addEventListener('pointerdown', () => tx.ctx?.state === 'suspended' && tx.ctx.resume().catch(() => {}), true);
+addEventListener('pointerdown', () => {
+  for (const s of [tx.mic, tx.call]) if (s?.ctx.state === 'suspended') s.ctx.resume().catch(() => {});
+}, true);
 
-// Cut the mic into clips at pauses, so each one is a sentence or so.
-function onSpeechFrame(frame) {
+// ---------- Call audio ----------
+// For a WhatsApp (or any other) call on this computer: the meeting starter
+// shares their screen with its sound, Connect keeps only the sound and
+// transcribes it under the caller's name, while their mic is transcribed under
+// theirs. Chrome 141+ on macOS 14.2+ (and Chrome/Edge on Windows) offer
+// "Also share system audio" when sharing the entire screen.
+const CAN_CALL_AUDIO = CAN_SHARE && !/Firefox|iPhone|iPad|Android/.test(navigator.userAgent);
+$('txCallBtn').hidden = !CAN_CALL_AUDIO;
+$('txCallBtn').onclick = () => {
+  if (!state.isHost) return;
+  if (tx.callStream) return stopCallAudio();
+  $('callName').value = tx.callName;
+  $('callAudioDialog').showModal();
+  $('callName').focus();
+};
+$('callCancel').onclick = () => $('callAudioDialog').close();
+$('callForm').onsubmit = async (e) => {
+  e.preventDefault();
+  $('callAudioDialog').close();
+  tx.callName = $('callName').value.replace(/\s+/g, ' ').trim().slice(0, 40) || 'Caller';
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      // Chrome only shares sound along with a picture; a tiny one, never shown or sent.
+      video: { frameRate: 1, width: 320, height: 180 },
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      systemAudio: 'include', selfBrowserSurface: 'exclude', monitorTypeSurfaces: 'include',
+    });
+  } catch { return; } // they cancelled the picker
+  const track = stream.getAudioTracks()[0];
+  if (!track) {
+    stream.getTracks().forEach((t) => t.stop());
+    return toast('No sound was shared. Pick "Entire screen" and turn on "Also share system audio" (Chrome 141 or newer; on a Mac, macOS 14.2 or newer).', 9000);
+  }
+  tx.callStream = stream;
+  for (const t of stream.getTracks()) t.onended = stopCallAudio; // "Stop sharing" in Chrome's bar
+  systemMessage(`The sound of this computer is transcribed as ${tx.callName}. Let them know the call is being transcribed.`);
+  if (tx.on) startCallSource();
+  else $('txToggle').onclick();
+  syncTranscriptUI();
+};
+async function startCallSource() {
+  const track = tx.callStream?.getAudioTracks()[0];
+  if (!track || tx.call) return;
+  try {
+    const s = await openSource(track, tx.callName);
+    if (!tx.on || tx.call || tx.callStream?.getAudioTracks()[0] !== track) return closeSource(s);
+    tx.call = s;
+  } catch (err) {
+    console.warn(err);
+    txStatus('The call audio can\'t be transcribed in this browser.');
+  }
+}
+function stopCallAudio() {
+  if (!tx.callStream) return;
+  tx.callStream.getTracks().forEach((t) => { t.onended = null; t.stop(); });
+  tx.callStream = null;
+  closeSource(tx.call);
+  tx.call = null;
+  systemMessage(`Stopped transcribing ${tx.callName}.`);
+  syncTranscriptUI();
+}
+
+// Cut a source into clips at pauses, so each one is a sentence or so.
+function onSpeechFrame(s, frame) {
   let sum = 0;
   for (const v of frame) sum += v * v;
   const loud = Math.sqrt(sum / frame.length) > SPEECH.threshold;
-  const c = tx.clip;
+  const c = s.clip;
   if (!c) {
-    tx.pre.push(frame);
-    if (tx.pre.length > SPEECH.preRoll) tx.pre.shift();
+    s.pre.push(frame);
+    if (s.pre.length > SPEECH.preRoll) s.pre.shift();
     if (loud) {
-      tx.clip = { frames: tx.pre, at: Date.now() - tx.pre.length * 100, voiced: 1, quiet: 0 };
-      tx.pre = [];
+      s.clip = { frames: s.pre, at: Date.now() - s.pre.length * 100, voiced: 1, quiet: 0 };
+      s.pre = [];
     }
     return;
   }
   c.frames.push(frame);
   if (loud) { c.voiced++; c.quiet = 0; } else c.quiet++;
   if (c.quiet * 100 < SPEECH.hangMs && c.frames.length * 100 < SPEECH.maxMs) return;
-  tx.clip = null;
+  s.clip = null;
   if (c.voiced * 100 < SPEECH.minMs) return;
   const frames = c.frames.slice(0, c.frames.length - Math.max(0, c.quiet - 2)); // keep a little trailing quiet
   const audio = new Float32Array(frames.length * 1600);
   frames.forEach((f, i) => audio.set(f, i * 1600));
-  transcribeClip(audio, c.at);
+  transcribeClip(audio, c.at, s.speaker);
 }
 
-function transcribeClip(audio, at) {
+function transcribeClip(audio, at, speaker) {
   const engine = engineNow();
   if (tx.pending > 4) return; // falling behind: drop rather than lag further and further
   tx.pending++;
@@ -2419,9 +2508,10 @@ function transcribeClip(audio, at) {
       const raw = engine === 'cloud' ? await viaCloud(audio) : await viaDevice(audio);
       const text = raw.trim().replace(/\s+/g, ' ');
       if (!tx.on || !/\p{L}/u.test(text) || HALLUCINATIONS.test(text)) return;
-      addLine(state.myName, text, at, true, state.myId);
-      broadcast({ t: 'line', text, at });
-      signal({ type: 'tx-line', text, at }); // saved with the meeting as it's said
+      if (speaker) addLine(speaker, text, at, false, 'call');
+      else addLine(state.myName, text, at, true, state.myId);
+      broadcast({ t: 'line', text, at, ...(speaker && { speaker }) });
+      signal({ type: 'tx-line', text, at, ...(speaker && { speaker }) }); // saved with the meeting as it's said
     } catch (err) {
       txStatus(err.message);
     } finally { tx.pending--; }
@@ -2521,7 +2611,7 @@ function showCaption(id, name, text) {
     cc.el.className = 'cc-line';
     const b = document.createElement('b');
     b.textContent = name;
-    if (id) b.style.color = colorOf(id);
+    if (typeof id === 'number') b.style.color = colorOf(id);
     cc.text = document.createElement('span');
     cc.el.append(b, cc.text);
     box.append(cc.el);

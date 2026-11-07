@@ -64,6 +64,10 @@ function renderPeer(p) {
     sendTo(p.id, { t: 'mute' });
     toast(`You muted ${p.name}`, 2500);
   };
+  const kick = p.tile.querySelector('.kick-btn');
+  kick.hidden = !state.isHost;
+  kick.title = `Remove ${p.name} from the call`;
+  kick.onclick = (e) => { e.stopPropagation(); askRemove(p); };
   if (typeof renderFloor === 'function') renderFloor();
 }
 function renderSelf() {
@@ -77,6 +81,8 @@ function renderSelf() {
 function syncHostUI() {
   $('muteAllBtn').hidden = !state.isHost;
   $('resetAllBtn').hidden = !state.isHost;
+  $('lockBtn').hidden = !state.isHost;
+  syncLock();
   for (const p of peers.values()) if (p.device) renderPeer(p);
   if (typeof syncBoard === 'function') syncBoard();
   if (typeof renderFloor === 'function') renderFloor();
@@ -114,6 +120,41 @@ $('muteAllBtn').onclick = () => {
   setSettingsOpen(false);
   toast('You muted everyone', 2500);
 };
+
+// ---------- Host: remove people, lock the meeting ----------
+function askRemove(p) {
+  const d = $('kickDialog');
+  d.querySelector('.peer-name').textContent = p.name;
+  d.dataset.id = p.id;
+  d.showModal();
+}
+$('kickNo').onclick = () => $('kickDialog').close();
+$('kickYes').onclick = () => {
+  const d = $('kickDialog');
+  d.close();
+  const p = peers.get(Number(d.dataset.id));
+  if (!p || !state.isHost) return;
+  signal({ type: 'remove', id: p.id });
+  toast(`You removed ${p.name}`, 2500);
+};
+function syncLock() {
+  $('lockBtn').classList.toggle('active', !!state.locked);
+  $('lockBtn').setAttribute('aria-checked', String(!!state.locked));
+  $('lockBtn').querySelector('span').textContent = state.locked ? 'Meeting locked' : 'Lock meeting';
+  $('lockDot').hidden = !state.locked;
+}
+$('lockBtn').onclick = () => {
+  if (!state.isHost) return;
+  signal({ type: 'lock', on: !state.locked });
+};
+function onLocked(msg) {
+  const changed = state.locked !== msg.on;
+  state.locked = msg.on;
+  syncLock();
+  if (!changed) return;
+  if (msg.byId === state.myId) toast(msg.on ? 'Meeting locked: anyone who joins now waits for you to let them in' : 'Meeting unlocked', 4000);
+  else toast(msg.on ? `${msg.by} locked the meeting` : `${msg.by} unlocked the meeting`, 3000);
+}
 
 // ---------- Reactions ----------
 function setReactOpen(open) {

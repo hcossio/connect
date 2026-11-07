@@ -535,6 +535,8 @@ function endSession(room, reason, leaver) {
 wss.on('connection', (ws, req) => {
   ws.user = auth.userFrom(req); // signed in: allowed to start meetings
   ws.ua = String(req.headers['user-agent'] || '').slice(0, 300);
+  // The address they connect from, so someone the host removed has to knock to come back.
+  ws.ip = String(req.headers['x-forwarded-for'] || '').split(',').pop().trim() || req.socket.remoteAddress;
   ws.device = /Android|iPhone|iPad|iPod|Mobile/i.test(ws.ua) ? 'phone' : 'desktop';
   ws.logged = 0; // connection reports from this browser, capped below
   /** @type {Room | null} */
@@ -556,8 +558,9 @@ wss.on('connection', (ws, req) => {
     // A pass to come back in without knocking again, for as long as this meeting runs.
     const pass = crypto.randomBytes(16).toString('hex');
     r.passes.add(pass);
+    ws.pass = pass;
     r.peers.add(ws);
-    send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY, title: r.meeting.title, waitingRoom: r.waitingRoom, browser: sharedBrowser.available(), ice: turn.iceServers(), pass, agenda: r.agenda ? liveAgenda.view(r.agenda) : null, canRunAgenda: r.host === ws || !!ws.user, floor: r.floor ? floor.view(r) : null });
+    send(ws, { type: 'joined', id: ws.peerId, host: r.host === ws, hostId: r.host.peerId, peers: others, token: ws.token, cloud: !!XAI_KEY, title: r.meeting.title, waitingRoom: r.waitingRoom, locked: r.locked, browser: sharedBrowser.available(), ice: turn.iceServers(), pass, agenda: r.agenda ? liveAgenda.view(r.agenda) : null, canRunAgenda: r.host === ws || !!ws.user, floor: r.floor ? floor.view(r) : null });
     connlog.log(r.meeting, 'join', { who: ws.displayName, id: ws.peerId, device: ws.device, ua: ws.ua, signedIn: !!ws.user, relay: turn.hasRelay(), people: r.peers.size });
     sharedBrowser.joined(r, ws);
     for (const p of r.peers) if (p !== ws) send(p, { type: 'peer-joined', id: ws.peerId, name: ws.displayName });
@@ -584,16 +587,19 @@ wss.on('connection', (ws, req) => {
       ws.peerId ||= nextId++;
       if (!r) {
         const sched = scheduledFor(name);
-        r = { peers: new Set(), host: ws, checking: false, files: new Set(), waiting: new Set(), passes: new Set(), waitingRoom: sched ? sched.waitingRoom : !!ws.user.waitingRoom };
+        r = { peers: new Set(), host: ws, checking: false, files: new Set(), waiting: new Set(), passes: new Set(), waitingRoom: sched ? sched.waitingRoom : !!ws.user.waitingRoom, locked: false, removed: new Set() };
         r.meeting = { room: name, title: sched?.title, startedAt: Date.now(), by: ws.user.username, host: ws.displayName, names: [], peak: 0, clips: 0, audioSec: 0 };
         store.addMeeting(r.meeting);
         rooms.set(name, r);
         scheduleCheck(r);
       }
       // Guests knock first when the meeting has a waiting room, unless they
-      // were already let in to this meeting and are coming back.
+      // were already let in to this meeting and are coming back. Once the host
+      // locks the meeting everyone new knocks, signed in or not, and so does
+      // anyone joining from where someone the host removed was.
       const back = typeof msg.pass === 'string' && r.passes.has(msg.pass);
-      if (r.waitingRoom && !ws.user && r.peers.size && !back) {
+      const mustKnock = r.locked || (!ws.user && (r.waitingRoom || r.removed.has(ws.ip)));
+      if (mustKnock && r.peers.size && !back) {
         ws.waitingFor = r;
         r.waiting.add(ws);
         send(ws, { type: 'waiting', scheduled: publicSchedule(name) });
@@ -617,6 +623,29 @@ wss.on('connection', (ws, req) => {
     }
 
     if (!room) return;
+
+    // The host takes someone out of the call. Their pass back in stops working.
+    if (msg.type === 'remove') {
+      if (room.host !== ws) return;
+      const p = [...room.peers].find((x) => x.peerId === msg.id);
+      if (!p || p === ws) return;
+      room.passes.delete(p.pass);
+      if (!p.user && p.ip) room.removed.add(p.ip);
+      connlog.log(room.meeting, 'removed', { who: p.displayName, id: p.peerId, by: ws.displayName });
+      p.removedBy = ws.displayName; // everyone else hears it when the socket closes
+      send(p, { type: 'removed', by: ws.displayName });
+      p.close(4002, 'removed');
+      return;
+    }
+
+    // The host locks the meeting: from now on everyone new waits to be let in.
+    if (msg.type === 'lock') {
+      if (room.host !== ws) return;
+      room.locked = !!msg.on;
+      connlog.log(room.meeting, room.locked ? 'locked' : 'unlocked', { by: ws.displayName });
+      for (const p of room.peers) send(p, { type: 'locked', on: room.locked, by: ws.displayName, byId: ws.peerId });
+      return;
+    }
 
     // The host's browser sends its transcript as it leaves, if they saved it before.
     if (msg.type === 'save-transcript') {
@@ -694,7 +723,7 @@ wss.on('connection', (ws, req) => {
     connlog.log(room.meeting, 'leave', { who: ws.displayName, id: ws.peerId, after: Math.round((Date.now() - ws.joinedAt) / 1000) });
     if (!room.peers.size) return endSession(room, 'left', ws);
     sharedBrowser.left(room, ws);
-    for (const p of room.peers) send(p, { type: 'peer-left', id: ws.peerId, name: ws.displayName });
+    for (const p of room.peers) send(p, { type: 'peer-left', id: ws.peerId, name: ws.displayName, removedBy: ws.removedBy });
     const r = room;
     floor.left(r, ws, (ev) => sendFloor(r, ev));
     // Someone still has to be asked whether to continue: pass it on.
